@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>James Noellert</title>
+  <style>
+    body {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 0 24px;
+      font-family: Arial, sans-serif;
+      font-size: 20px;
+      letter-spacing: 0.04em;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 60px;
+    }
+
+    nav { align-self: start; position: sticky; top: 40px; }
+    nav ul { list-style: none; padding: 0; margin: 0 0 20px; }
+    nav li { margin: 4px 0; }
+
+    a { color: inherit; cursor: pointer; text-decoration: none; }
+    nav a.active { text-decoration: underline; }
+    nav a:hover { text-decoration: underline; }
+
+    .panel { display: none; max-width: 600px; }
+    .panel.active { display: block; }
+
+    .panel p { margin: 12px 0; }
+    .panel img { width: 100%; height: auto; display: block; margin: 12px 0; }
+
+    /* Video embeds (YouTube, Vimeo) keep a 16:9 ratio. */
+    .video { position: relative; padding-top: 56.25%; margin: 12px 0; }
+    .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+    /* Mobile layout — kicks in on narrow screens (phones). */
+    @media (max-width: 700px) {
+      body {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        margin: 24px auto;
+      }
+      nav { position: static; }
+      .panel { max-width: 100%; }
+    }
+  </style>
+</head>
+
+
+<!-- 📘Table of Contents -->
+
+
+<body>
+  <nav>
+    <p><i>James Noellert</i></p>
+
+    <!-- INTERNAL PAGE LINKS
+         Each <li> is one item in the menu. To add a new page:
+           1. Copy one <li> line below and change the data-target
+              and the link text.
+           2. Scroll down and add a matching <section> in the main
+              content area with the same id as the data-target.
+         The "class=active" on About just means About is the page
+         that shows when the site first loads. -->
+    <ul>
+      <li><a data-target="info" class="active">Info</a></li>
+      <li><a data-target="animation">Animation</a></li>
+      <li><a data-target="illustration">Illustration</a></li>
+    </ul>
+
+    <!-- EXTERNAL LINKS (to other sites)
+         These open in a new tab so visitors don't leave your site.
+         The target="_blank" is what makes the new-tab behavior happen.
+         To add a new link, copy a line and change both the URL
+         (in href="...") and the visible text. Keep target="_blank".
+    -->
+    <ul>
+      <li><a href="https://www.youtube.com/@jamesnoellert" target="_blank">YouTube</a></li>
+      <li><a href="https://www.instagram.com/jamesnoellert/" target="_blank">Instagram</a></li>
+      <li><a href="https://substack.com/@jamesnoellert" target="_blank">Substack</a></li>
+    </ul>
+
+  </nav>
+
+  <!-- ============================================================
+       MAIN CONTENT AREA
+       Each <section class="panel"> is one page of the site.
+       The id="..." must match the data-target in the nav above.
+
+       INSIDE A SECTION, YOU CAN MIX AND MATCH:
+
+         A paragraph of text:
+           <p>Your text here.</p>
+
+         An image (put image files in an "images" folder next to
+         this HTML file):
+           <img src="images/filename.jpg" alt="">
+
+         A video embed (replace VIDEO_ID with the actual ID from
+         YouTube — it's the part after "watch?v=" in the URL):
+           <div class="video">
+             <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe>
+           </div>
+
+         A link inside a paragraph (target="_blank" opens it in a
+         new tab so visitors stay on your site):
+           <p>See more on <a href="https://example.com" target="_blank">my Vimeo</a>.</p>
+
+       Just stack these in any order to build a blog-style page.
+       ============================================================ -->
+  <main>
+
+      
+      
+    <!-- 💛💛💛INFO PAGE💛💛💛 -->
+    <section class="panel active" id="info">
+      <p>I am an illustrator, and most of my work is designing for animation. I have been freelance since I graduated from the College for Creative Studies in 2009. I live in Ann Arbor, Michigan with my family. </p>
+      <p>Have fun clicking around, the best way to reach me is email!
+      <p>jamesnoellert@gmail.com</p>
+    </section>
+
+    
+    
+    <!-- 💚💚💚ANIMATION PAGE💚💚💚 -->
+    <section class="panel" id="animation">
+
+      <!-- Example video embed — replace the URL with your own. -->
+      <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"><iframe src="https://framerate.tv/embed/96a8e5df-b587-4f75-9699-e6d3743966d3?primary_color=%2523ffffff&track_color=%2523ffffff&theme=minimal" width="1920" height="1080" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; aspect-ratio: 16 / 9; border: none;" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
+      
+      <br>
+      <p>"The Space Explorers 3" </p>
+
+      <!-- Example placeholder — replace with: <img src="images/your-still.jpg" alt=""> -->
+      <div class="placeholder" style="aspect-ratio: 4/3;"></div>
+
+      <p></p>
+
+    </section>
+
+    
+    
+    <!-- 💙💙💙ILLUSTRATION PAGE💙💙💙 -->
+    <section class="panel" id="illustration">
+      <p>Illustration work — placeholder. Add images and text here using the same pattern as the Animation page.</p>
+    </section>
+
+  </main>
+
+  
+  
+  
+  <!-- ============================================================
+       SCRIPT
+       This handles the page-switching when you click nav items.
+       You shouldn't need to edit this.
+       ============================================================ -->
+  <script>
+    const links = document.querySelectorAll('nav a[data-target]');
+    const panels = document.querySelectorAll('.panel');
+
+    function show(id) {
+      panels.forEach(p => p.classList.toggle('active', p.id === id));
+      links.forEach(a => a.classList.toggle('active', a.dataset.target === id));
+      history.replaceState(null, '', '#' + id);
+    }
+
+    links.forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      show(a.dataset.target);
+    }));
+
+    if (location.hash) {
+      const id = location.hash.slice(1);
+      if (document.getElementById(id)) show(id);
+    }
+  </script>
+</body>
+</html>
