@@ -4,10 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <!-- 🟢🟢🟢 Site Title 🟢🟢🟢 -->
   <title>James Noellert</title>
-  
-  <!-- 🟢🟢🟢 FAVICON 🟢🟢🟢 -->
   <link rel="icon" type="image/png" href="images/avatar_hand_favicon.png">
   
   <style>
@@ -37,11 +34,9 @@
     .panel p { margin: 12px 0; }
     .panel img { width: 100%; height: auto; display: block; margin: 12px 0; }
 
-    /* Video embeds (YouTube, Vimeo) keep a 16:9 ratio. */
     .video { position: relative; padding-top: 56.25%; margin: 12px 0; }
     .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
-    /* Mobile layout — kicks in on narrow screens (phones). */
     @media (max-width: 700px) {
       body {
         grid-template-columns: 1fr;
@@ -54,11 +49,8 @@
   </style>
 </head>
 
-
-<!-- 📘📘📘 Table of Contents 📘📘📘 -->
-
-
 <body>
+  <!-- 📘📘📘 TABLE OF CONTENTS 📘📘📘 -->
   <nav>
     <p><i>James Noellert</i></p>
 
@@ -68,7 +60,7 @@
               and the link text.
            2. Scroll down and add a matching <section> in the main
               content area with the same id as the data-target.
-         The "class=active" on About just means About is the page
+         The "class=active" on Info just means Info is the page
          that shows when the site first loads. -->
     <ul>
       <li><a data-target="info" class="active">Info</a></li>
@@ -77,10 +69,9 @@
     </ul>
 
     <!-- EXTERNAL LINKS (to other sites)
-         These open in a new tab so visitors don't leave your site.
          The target="_blank" is what makes the new-tab behavior happen.
          To add a new link, copy a line and change both the URL
-         (in href="...") and the visible text. Keep target="_blank".
+         (in href="...") and the visible text.
     -->
     <ul>
       <li><a href="https://www.instagram.com/jamesnoellert/" target="_blank">Instagram</a></li>
@@ -90,54 +81,21 @@
 
   </nav>
 
-  <!-- ============================================================
-       MAIN CONTENT AREA
-       Each <section class="panel"> is one page of the site.
-       The id="..." must match the data-target in the nav above.
-
-       INSIDE A SECTION, YOU CAN MIX AND MATCH:
-
-         A paragraph of text:
-           <p>Your text here.</p>
-
-         An image (put image files in an "images" folder next to
-         this HTML file):
-           <img src="images/filename.jpg" alt="">
-
-         A video embed (replace VIDEO_ID with the actual ID from
-         YouTube — it's the part after "watch?v=" in the URL):
-           <div class="video">
-             <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe>
-           </div>
-
-         A link inside a paragraph (target="_blank" opens it in a
-         new tab so visitors stay on your site):
-           <p>See more on <a href="https://example.com" target="_blank">my Vimeo</a>.</p>
-
-       Just stack these in any order to build a blog-style page.
-       ============================================================ -->
-
-
-  
-  
   <main>
       
-    <!-- 💛💛💛INFO PAGE💛💛💛 -->
+    <!-- 💛💛💛 INFO PAGE 💛💛💛 -->
     <section class="panel active" id="info">
       <p>7/10/26 This is a new site! I just moved in so things are a bit empty, but I always say that an outdated portfolio is a good sign that the artist is happy and busy with projects.</p>
       <p>Recent work is posted on Instagram, YouTube is where I document my process, and I am setting up Substack to be where I go to distill some thoughts about image making in general.</p>
-
       <p>The best way to reach me is email!</p>
       <p>jamesnoellert@gmail.com</p>
     </section>
 
     
-    
-    <!-- 💚💚💚ANIMATION PAGE💚💚💚 -->
+    <!-- 💚💚💚 ANIMATION PAGE 💚💚💚 -->
     <section class="panel" id="animation">
       <!-- 🎬 Video Embed -->
       <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"><iframe src="https://framerate.tv/embed/96a8e5df-b587-4f75-9699-e6d3743966d3?primary_color=%2523ffffff&track_color=%2523ffffff&theme=minimal" width="1920" height="1080" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; aspect-ratio: 16 / 9; border: none;" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
-      
       <br>
       <p>"The Space Explorers 3" </p>
       <p>I have a project called "The Space Explorers" that I have been using to continue my education, learning about animation, production design, Blender, and lately I've been practicing my writing as I develop longer stories in this world. The current project is the fourth animation, and is a stand alone short (7 mins) called "His Important Computer". This video below is a cut of some footage from halfway through the production. </p>
@@ -145,15 +103,12 @@
       <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"><iframe src="https://framerate.tv/embed/5c95f7c4-24d9-4bf6-9bdb-23930244af29?primary_color=%2523ffffff&track_color=%2523ffffff&theme=minimal" width="1920" height="1080" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; aspect-ratio: 16 / 9; border: none;" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
       <br>
       <p>For more updates and process, I have been sharing things on instagram @largo.pictures</p>
-
     </section>
-
     
-    
-    <!-- 💙💙💙ILLUSTRATION PAGE💙💙💙 -->
+    <!-- 💙💙💙 ILLUSTRATION PAGE 💙💙💙 -->
     <section class="panel" id="illustration">
       <p>9/23/26 So this site is an experiment in just hosting images and html on github, and I am having fun with it. I always wanted my squarespace to look this simple and clean, but I was always fighting the convoluted menus of options. Maybe this is also an artist's statement?</p>
-    <br> 
+      <br> 
       <img src="images/kaffe.jpg">
       <img src="images/coffee.jpg">
       <img src="images/shoes.jpg">
@@ -162,20 +117,10 @@
       <img src="images/knight.jpg">
       <img src="images/incrament_cover.jpg">
       <img src="images/rand5 copy 2.png">
-      
-
     </section>
-
   </main>
-
   
-  
-  
-  <!-- ============================================================
-       SCRIPT
-       This handles the page-switching when you click nav items.
-       You shouldn't need to edit this.
-       ============================================================ -->
+  <!-- This is for the page-switching when you click table of contents items. -->
   <script>
     const links = document.querySelectorAll('nav a[data-target]');
     const panels = document.querySelectorAll('.panel');
