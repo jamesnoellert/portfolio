@@ -407,6 +407,7 @@ function levelFortress() {
     spawns: [[-3, 34, -2], [0, 34, 0], [-1, 34, -4], [-3, 38, 3.6], [1, 38, 3.6], [-4, 38, -6], [5, 38, -4], [5.5, 45, 4.5], [5.3, 48.5, 2]],
     atk: [[34, 64], [38, 70], [-4, 66], [-46, 46], [-52, 38], [24, 50]],
     ammo: [[-4, 34, 1], [1, 34, -4], [-1, 38, 3.6], [6.2, 45, 5], [-9, 38, -7], [-2, 34, -5, 1], [6.6, 45, 4, 1]],
+    heals: [[-1.5, 34, -1.5], [-4.5, 38, 4.1], [0, 38, -5.5], [6.5, 45, 2.5]],
     pickups: [['carbine', -2, 34, 0.5], ['carbine', 1, 38, 3.6], ['shotgun', 0, 34, -5], ['rifle', 5.8, 48.5, 4], ['rifle', 5.2, 45, 5.2]],
     // Ladders: climb volume [x0, x1, z0, z1, y0, y1] and the way they face (up the tower shaft to the room hatch; outside up to the roof)
     ladders: [{ box: [3.15, 4.05, 2.2, 2.95, 33.5, 44.9], dir: [0, 1] }, { box: [1.85, 2.8, 1.95, 2.85, 33.5, 48.6], dir: [1, 0] }],
@@ -1504,6 +1505,7 @@ let matchOver = false;
 let WAVES = 6;
 const WAVE = { n: 0, phase: 'prep', t: 0, queue: 0, hp: 100, left: 0, core: 100 };
 const WAVE_BREAK = 12, SIEGE_RATE = 0.8; // seconds between waves; gate health lost per second per attacker at it
+const ATK_SPEED = 0.7; // attackers move at this fraction of normal bot speed
 const waveSize = n => 4 + 3 * (n - 1);
 const gateOpen = () => !!(TG && TG.gate && TG.gate.open);
 // Outside the gate and close enough to be battering at it
@@ -1535,9 +1537,9 @@ function updateGate(dt) {
 }
 function waveNote(text) { note(text, 3); netFx({ t: 'wn', x: text }); }
 function startWave() {
-  WAVE.n++; WAVE.phase = 'fight'; WAVE.queue = waveSize(WAVE.n); setGate(false);
+  WAVE.n++; WAVE.phase = 'fight'; WAVE.queue = waveSize(WAVE.n); if (!WAVE.broken) setGate(false);
   bots.forEach(b => { b.respawnT = Math.random() * 3; });
-  waveNote(`Wave ${WAVE.n} of ${WAVES}: the gate is shut and they're coming over the hills`); sTone([330, 392, 330, 392], 0.16, 'square', 0.1);
+  waveNote(`Wave ${WAVE.n} of ${WAVES}: ${WAVE.broken ? 'the gate is gone' : 'the gate is shut'} and they're coming over the hills`); sTone([330, 392, 330, 392], 0.16, 'square', 0.1);
 }
 function updateWaves(dt) {
   if (MODE !== 'defend' || matchOver) return;
@@ -1546,16 +1548,17 @@ function updateWaves(dt) {
   WAVE.left = alive + WAVE.queue;
   if (WAVE.phase === 'prep') {
     const was = WAVE.t; WAVE.t -= dt;
-    if (was > 4 && WAVE.t <= 4) waveNote('The gate closes in 4 seconds');
+    if (was > 4 && WAVE.t <= 4 && !WAVE.broken) waveNote('The gate closes in 4 seconds');
     if (WAVE.t <= 0) startWave(); return;
   }
-  if (siege && !gateOpen()) { WAVE.hp = Math.max(0, WAVE.hp - siege * SIEGE_RATE * dt); if (WAVE.hp <= 0) setGate(true, true); }
+  if (siege && !gateOpen()) { WAVE.hp = Math.max(0, WAVE.hp - siege * SIEGE_RATE * dt); if (WAVE.hp <= 0) { WAVE.broken = true; setGate(true, true); } }
   if (!alive && WAVE.queue <= 0) {
     if (WAVE.n >= WAVES) { endMatch(null, true); return; }
-    // Between waves the gate is patched up (a broken one is rebuilt) and opened, and the computer is repaired a little
-    WAVE.phase = 'prep'; WAVE.t = WAVE_BREAK; WAVE.hp = WAVE.hp <= 0 ? 40 : Math.min(100, WAVE.hp + 10); WAVE.core = Math.min(100, WAVE.core + 10);
-    setGate(true);
-    waveNote(`Wave ${WAVE.n} cleared. The gate is open: restock and get back inside`); sTone([523, 659, 784], 0.12, 'square', 0.1);
+    // Between waves the gate is patched up and opened (once broken it stays down for good), the computer is repaired a little
+    // and every health box is restocked
+    WAVE.phase = 'prep'; WAVE.t = WAVE_BREAK; WAVE.hp = WAVE.broken ? 0 : Math.min(100, WAVE.hp + 10); WAVE.core = Math.min(100, WAVE.core + 10);
+    setGate(true); HEALS.forEach(h => setHeal(h, true));
+    waveNote(`Wave ${WAVE.n} cleared. ${WAVE.broken ? 'The gate is gone for good' : 'The gate is open'}: restock and get back inside`); sTone([523, 659, 784], 0.12, 'square', 0.1);
   }
 }
 // Attackers come out of cover behind the hills, spread a little around each spawn point
@@ -1599,7 +1602,7 @@ function resetMatch() {
   clearCorpses();
   matchOver = false;
   if (MODE === 'defend') {
-    Object.assign(WAVE, { n: 0, phase: 'prep', t: 8, queue: 0, hp: 100, core: 100 }); setGate(true);
+    Object.assign(WAVE, { n: 0, phase: 'prep', t: 8, queue: 0, hp: 100, core: 100, broken: false }); setGate(true);
     ents.forEach(e => { if (!e.bot) respawn(e); });
     note('The first wave is on its way. Man the walls', 4);
   } else ents.forEach(respawn);
@@ -1678,13 +1681,14 @@ function updateGas(dt) {
   for (const g of GASCANS) if (!g.alive) { g.t -= dt; if (g.t <= 0) { g.alive = true; g.o.visible = true; } } for (let i = pendingGas.length - 1; i >= 0; i--) { const q = pendingGas[i]; q.t -= dt; if (q.t <= 0) { pendingGas.splice(i, 1); shootGas(q.g, q.owner); } } }
 // Health pickups: each pile of white bottles or yellow crab cans restores full health, then comes back after a while
 const HEALS = [];
+const HEAL_MAT = new THREE.MeshLambertMaterial({ color: 0xf2f0ea }), CROSS_MAT = new THREE.MeshLambertMaterial({ color: 0xc8302f });
 function registerHeal(objs, pos) { objs = objs.filter(Boolean); if (objs.length) HEALS.push({ objs, pos, active: true, t: 0 }); }
 function setHeal(h, on) { h.active = on; h.objs.forEach(o => { o.visible = on; }); }
 function updateHeals(dt) {
   for (const h of HEALS) {
     if (!h.active) { h.t -= dt; if (h.t <= 0) setHeal(h, true); continue; }
     for (const e of ents) {
-      if (!e.alive || e.health >= 100) continue;
+      if (!e.alive || e.health >= 100 || (MODE === 'defend' && e.bot)) continue;
       if (Math.hypot(e.pos.x - h.pos.x, e.pos.z - h.pos.z) < 1.0 && Math.abs(e.pos.y - h.pos.y) < 1.2) {
         e.health = 100; setHeal(h, false); h.t = 30;
         if (e.isRemote) sendTo(e, { t: 'heal' });
@@ -1781,7 +1785,17 @@ function placeProps() {
   if (propGroup) scene.remove(propGroup);
   propGroup = new THREE.Group(); scene.add(propGroup);
   GASCANS.length = 0; pendingGas.length = 0; HEALS.length = 0;
-  if (TG) return;
+  // Mesh levels (Fortress): white health boxes with a red cross at the level's listed spots
+  if (TG) {
+    for (const spot of LV.heals || []) {
+      const p = settle(spot), g = new THREE.Group(), box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.45), HEAL_MAT);
+      const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.02, 0.1), CROSS_MAT), bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.34), CROSS_MAT);
+      bar1.position.y = bar2.position.y = 0.18; box.castShadow = true; g.add(box, bar1, bar2);
+      g.position.set(p.x, p.y + 0.18, p.z); propGroup.add(g);
+      registerHeal([g], p);
+    }
+    return;
+  }
   let seed = 1337; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const keep = [...SPAWNS, ...ammoBoxes.map(a => a.pos), ...PICKUPS.map(pk => pk.pos)];
   const flatH = n => { const h = nodeH(n); return h === 0 || h === BASE || n >= N; };
@@ -1874,10 +1888,8 @@ function botInitWeapons(b) {
   b.inv = ['pistol']; b.ammoBy = { pistol: { mag: b.ammo, res: b.reserve } }; b.wpn = 'pistol';
   botSelect(b, 'pistol');
   if (MODE !== 'defend') return;
-  // Attackers carry full reserves (no ammo runs) and bring heavier guns as the waves go on
-  const w = WAVE.n, r = Math.random();
-  const id = w >= 4 && r < 0.12 ? 'rifle' : w >= 2 && r < 0.6 ? 'carbine' : w >= 3 && r < 0.75 ? 'shotgun' : null;
-  if (id) giveWeapon(b, id);
+  // Attackers all carry a Midas carbine with full reserves (no ammo runs)
+  giveWeapon(b, 'carbine');
   for (const k of b.inv) b.ammoBy[k].res = WEAPONS[k].maxRes;
   b.reserve = b.ammoBy[b.wpn].res;
 }
@@ -2160,7 +2172,7 @@ function updateBot(b, dt) {
         if (bw.auto) { ai.fireCd = 0.12; ai.burst++; if (ai.burst >= 3 + (Math.random() * 3 | 0)) { ai.burst = 0; ai.fireCd = 0.5 + Math.random() * 0.7; } }
         else ai.fireCd = Math.max(bw.rate, 0.3) + Math.random() * 0.35;
       }
-      if (b.nades > 0 && ai.nadeCd <= 0) {
+      if (!def && b.nades > 0 && ai.nadeCd <= 0) { // attackers don't throw grenades
         ai.nadeCd = 3 + Math.random() * 4;
         if (dist > 8 && dist < 26 && Math.random() < D.nade * 4) botNade(b, t);
       }
@@ -2188,6 +2200,7 @@ function updateBot(b, dt) {
     ai.lastPos.copy(b.pos); ai.stuckT = 0;
   }
   if (wish.lengthSq() > 0) wish.normalize();
+  if (def) speed *= ATK_SPEED;
   const k = Math.min(1, (b.onGround ? 10 : 2) * dt);
   b.vel.x += (wish.x * speed - b.vel.x) * k;
   b.vel.z += (wish.z * speed - b.vel.z) * k;
@@ -2367,7 +2380,7 @@ function updateHUD(dt) {
   if (P.nades !== hud.nades) { hud.nades = P.nades; $('nades').innerHTML = '<i></i>'.repeat(P.nades); }
   if (MODE === 'defend') {
     const hp = Math.ceil(WAVE.hp), core = Math.ceil(WAVE.core), prep = WAVE.phase === 'prep', down = gateOpen() && !prep, wv = WAVE.phase === 'prep' ? (WAVE.n ? `Wave ${WAVE.n + 1} of ${WAVES} in ${Math.ceil(WAVE.t)}s` : `First wave in ${Math.ceil(WAVE.t)}s`) : `Wave ${WAVE.n} of ${WAVES}   ·   Attackers left ${WAVE.left}`;
-    $('top').textContent = `${wv}   ·   ${down ? 'Gate down' : prep ? `Gate open (${hp}%)` : `Gate ${hp}%`}   ·   Computer ${core}%   ·   You ${P.kills}/${P.deaths}`;
+    $('top').textContent = `${wv}   ·   ${down ? 'Gate down' : prep ? (hp <= 0 ? 'Gate destroyed' : `Gate open (${hp}%)`) : `Gate ${hp}%`}   ·   Computer ${core}%   ·   You ${P.kills}/${P.deaths}`;
     $('top').classList.toggle('alert', !prep && (down || hp <= 30 || core < 100));
   } else {
     const leader = ents.reduce((a, b) => (b.kills > a.kills ? b : a));
