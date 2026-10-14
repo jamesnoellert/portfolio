@@ -42,6 +42,9 @@ body.touch #chatin{left:50%;transform:translateX(-50%);bottom:auto;top:calc(54px
 #bullets i.m{background:#fff}
 #bullets.rl i.m{animation:rl .5s ease-in-out infinite alternate}
 @keyframes rl{to{opacity:.25}}
+#cprompt{position:absolute;top:60%;left:50%;transform:translateX(-50%);background:var(--panel);padding:6px 14px;border-radius:4px;font-size:15px}
+#cpu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(8,14,12,.92);border:2px solid #3fbf7f;border-radius:6px;padding:12px;color:#bff5d6;font:13px/1.5 ui-monospace,Menlo,monospace;text-align:center}
+#cpu canvas{display:block;width:336px;height:368px;image-rendering:pixelated;margin-bottom:8px}
 #msg{position:absolute;top:38%;left:50%;transform:translateX(-50%);font-size:24px;text-shadow:0 2px 6px #000;text-align:center}
 #resume{position:absolute;top:44%;left:50%;transform:translateX(-50%);background:var(--panel);padding:8px 16px;border-radius:4px;font-size:15px;display:none}
 #note{position:absolute;top:60%;left:50%;transform:translateX(-50%);font-size:16px;text-shadow:0 2px 6px #000}
@@ -142,6 +145,8 @@ body.touch .card small.tc{display:block}
   <div id="feed"></div>
   <div id="ammo"><div id="hpbar" aria-label="Health"><div id="hp"></div></div><div id="nades"></div><div id="bullets"></div></div>
   <div id="msg"></div>
+  <div id="cprompt" style="display:none">E: use the computer</div>
+  <div id="cpu" style="display:none"><canvas id="cmap" width="336" height="368"></canvas><div id="cpuinfo"></div><div>Space: open or close the gate &middot; E: step away</div></div>
   <div id="note"></div>
   <div id="resume">Click to resume</div>
   <div id="mic"></div>
@@ -168,9 +173,9 @@ body.touch .card small.tc{display:block}
   <h1 id="mtitle">Fortress defend</h1>
   <p id="goal"></p>
   <div class="set hostonly" id="invite"><label>Invite friends</label><div class="invrow"><input id="invlink" type="text" readonly value="Starting multiplayer…"><button type="button" id="copyinv">Copy</button></div><small id="roster"></small></div>
-  <p class="guestonly">You're joining a friend's game. The host picks the level, bots and score limit.</p>
-  <p class="guestonly" id="netstat">Pick a name and character, then join.</p>
-  <div class="set hostonly"><label>Level</label><div class="levels" id="levels"><button type="button" data-lv="fortress" class="on">Fortress</button></div></div>
+  <p class="guestonly">You're joining a friend's game. If the tower has room you're the Master or the Apprentice; otherwise you join the attackers as a Midas soldier.</p>
+  <p class="guestonly" id="netstat">Pick a name, then join.</p>
+  <div class="set hostonly"><label>Your role with a friend</label><div class="levels" id="roles"><button type="button" data-role="master" class="on">Master</button><button type="button" data-role="apprentice">Apprentice</button></div><small>Alone you are always the Master. The second player takes the other role; anyone after that attacks.</small></div>
   <dl class="kb">
     <dt>WASD</dt><dd>Move (walking is more accurate)</dd>
     <dt>Shift</dt><dd>Run</dd>
@@ -182,6 +187,7 @@ body.touch .card small.tc{display:block}
     <dt>Wheel, 1–4</dt><dd>Switch weapon</dd>
     <dt>F</dt><dd>Knife</dd>
     <dt>M</dt><dd>Mute or unmute your mic</dd>
+    <dt>E</dt><dd>Use the computer (tower room) or take over a soldier</dd>
     <dt>Enter</dt><dd>Chat with everyone in the game</dd>
     <dt>G</dt><dd>Frag grenade</dd>
     <dt>Tab</dt><dd>Scoreboard</dd>
@@ -195,7 +201,7 @@ body.touch .card small.tc{display:block}
     <dt>Swap</dt><dd>Next weapon</dd>
     <dt>Gyro</dt><dd>Aim by moving your phone</dd>
   </dl>
-  <div class="set hostonly"><label for="sbots"><span id="lbots">Bots</span> <output id="obots">5</output></label><input type="range" id="sbots" min="0" max="40" value="5"></div>
+  <div class="set hostonly"><label for="sbots"><span id="lbots">Bots</span> <output id="obots">8</output></label><input type="range" id="sbots" min="0" max="40" value="8"></div>
   <div class="set hostonly"><label for="sdiff">Bot difficulty <output id="odiff">Normal</output></label><input type="range" id="sdiff" min="1" max="5" value="3"></div>
   <div class="set hostonly" id="setlimit"><label for="sglimit">Score limit <output id="oglimit">20</output></label><input type="range" id="sglimit" min="5" max="50" step="5" value="20"></div>
   <div class="set hostonly" id="setwaves" style="display:none"><label for="swaves">Waves to survive <output id="owaves">6</output></label><input type="range" id="swaves" min="3" max="15" value="6"></div>
@@ -204,9 +210,9 @@ body.touch .card small.tc{display:block}
   <small class="tc">Best in landscape. Changing the bot count restarts the match.</small>
 </div>
 <div class="card" id="charcard">
-  <h1>Your character</h1>
+  <h1 id="chartitle">Your character</h1>
   <div class="set"><label for="pname">Name</label><input id="pname" type="text" maxlength="16" placeholder="You" autocomplete="off" spellcheck="false"></div>
-  <div class="set"><label for="schar">Character</label><select id="schar"></select></div>
+  <div class="set" style="display:none"><label for="schar">Character</label><select id="schar"></select></div>
   <canvas id="cprev" width="240" height="280"></canvas>
 </div>
 </div></div>
@@ -408,7 +414,8 @@ function levelFortress() {
     atk: [[34, 64], [38, 70], [-4, 66], [-46, 46], [-52, 38], [24, 50]],
     ammo: [[-4, 34, 1], [1, 34, -4], [-1, 38, 3.6], [6.2, 45, 5], [-9, 38, -7], [-2, 34, -5, 1], [6.6, 45, 4, 1]],
     heals: [[-1.5, 34, -1.5], [-4.5, 38, 4.1], [0, 38, -5.5], [6.5, 45, 2.5]],
-    pickups: [['carbine', -2, 34, 0.5], ['carbine', 1, 38, 3.6], ['shotgun', 0, 34, -5], ['rifle', 5.8, 48.5, 4], ['rifle', 5.2, 45, 5.2]],
+    pickups: [], // loadouts are fixed by role
+    cannon: [5.3, 48.5, 3.6], // the Computer's cannon on the tower roof
     // Ladders: climb volume [x0, x1, z0, z1, y0, y1] and the way they face (up the tower shaft to the room hatch; outside up to the roof)
     ladders: [{ box: [3.15, 4.05, 2.2, 2.95, 33.5, 44.9], dir: [0, 1] }, { box: [1.85, 2.8, 1.95, 2.85, 33.5, 48.6], dir: [1, 0] }],
     // Attackers at the front gate wear it down; once it's open they make for the computer up in the tower room
@@ -1033,7 +1040,7 @@ function switchLevel(id) { if (NET.role === 'host') broadcast({ t: 'level', id }
 // Start screen and results show the rules of the selected level's mode
 function updateGoal() {
   const def = (NET.role === 'host' ? LEVEL_DEFS[selLevel]().mode : MODE) === 'defend';
-  $('goal').textContent = def ? `Fortress defend: survive ${NET.role === 'host' ? +$('swaves').value : WAVES} waves of attackers coming up from behind the hills. They batter down the front gate, then climb the tower for the computer. Lose the computer and the fort falls. Ammo and guns are inside.` : `First to ${KILL_LIMIT} kills wins.`;
+  $('goal').textContent = def ? `Hold the tower through ${NET.role === 'host' ? +$('swaves').value : WAVES} waves of ${WAVE_SIZE} Midas soldiers. The Master (rifle, pistol, 4 grenades, double health) holds the walls. The Apprentice (pistol) works the computer in the tower room: a map of the attackers and the gate switch. The Computer fires the roof cannon on its own. The gate only breaks once. Lose the computer and the fort falls.` : `First to ${KILL_LIMIT} kills wins.`;
   $('mtitle').textContent = def ? 'Fortress defend' : 'Free for all';
   $('setlimit').style.display = def ? 'none' : ''; $('setwaves').style.display = def ? '' : 'none';
   $('lbots').textContent = def ? 'Attackers at once' : 'Bots';
@@ -1335,6 +1342,7 @@ function updatePlayerRig(dt) {
 }
 
 const P = makeEntity('You', true);
+P.role = 'master';
 P.eyeCur = 1.6; P.viewY = 0;
 const BOT_DEFS = [['Viper', 0xd9534f], ['Nomad', 0x4fa3d9], ['Rook', 0xf0ad4e], ['Echo', 0x9b59b6], ['Havoc', 0x2ecc71],
   ['Jinx', 0xe67e22], ['Talon', 0x1abc9c], ['Ghost', 0xbdc3c7], ['Blaze', 0xe84393], ['Atlas', 0x5d7a99],
@@ -1356,7 +1364,7 @@ function buildBots(n) {
 }
 
 function pickSpawn(e) {
-  if (MODE === 'defend' && e.bot) return attackerSpawn();
+  if (MODE === 'defend' && isAtk(e)) return attackerSpawn();
   let best = SPAWNS[0], bd = -1;
   for (const s of SPAWNS) {
     let md = 999;
@@ -1366,18 +1374,21 @@ function pickSpawn(e) {
   }
   return best;
 }
-function respawn(e) {
-  const s = pickSpawn(e);
+function respawn(e, at, atYaw) { // at/atYaw: a set spot (taking over a soldier); ignored when called from forEach
+  const s = at && at.isVector3 ? at : pickSpawn(e), k = kitOf(e);
+  if (!(at && at.isVector3)) atYaw = undefined;
   e.pos.copy(s); e.vel.set(0, 0, 0);
-  e.health = 100; e.alive = true; e.h = STAND_H;
-  e.ammo = MAG; e.reserve = START_RES; e.nades = 2; e.reloading = 0;
+  e.health = maxHp(e); e.alive = true; e.h = STAND_H;
+  e.ammo = MAG; e.reserve = START_RES; e.nades = k ? k.nades : 2; e.reloading = 0;
   // Players look toward the middle of the map; fort defenders look out over the hills the attackers come from
-  const look = MODE === 'defend' ? Math.PI : Math.atan2(s.x, s.z);
+  const look = atYaw !== undefined ? atYaw : MODE === 'defend' && !isAtk(e) ? Math.PI : Math.atan2(s.x, s.z);
   if (e.isRemote) {
     e.yaw = e.yawV = look + Math.PI; e.target.copy(s); e.mesh.visible = true; e.spawnSeq++;
-    e.inv = ['pistol']; e.ammoBy = { pistol: { mag: 12, res: 24 } }; e.wpn = 'pistol'; setRigWeapon(e.rig, 'pistol');
-    sendTo(e, { t: 'spawn', p: arr(s), y: look, n: e.spawnSeq });
-  } else if (e.isPlayer) { e.yaw = look; e.pitch = 0; e.viewY = s.y + 1.6; $('msg').textContent = ''; initPlayerWeapons(); }
+    const inv = k ? k.inv : ['pistol'];
+    e.inv = inv.slice(); e.ammoBy = {}; for (const id of inv) e.ammoBy[id] = { mag: WEAPONS[id].mag, res: WEAPONS[id].startRes };
+    e.wpn = inv[0]; setRigWeapon(e.rig, e.wpn);
+    sendTo(e, { t: 'spawn', p: arr(s), y: look, n: e.spawnSeq, k: e.role });
+  } else if (e.isPlayer) { e.yaw = look; e.pitch = 0; e.viewY = s.y + 1.6; $('msg').textContent = ''; initPlayerWeapons(); applyPlayerKit(); }
   else { e.yaw = Math.atan2(-s.x, -s.z); e.mesh.visible = true; e.rig.wrap.rotation.x = 0; e.ai.target = null; e.ai.path = null; e.ai.route = undefined; e.climb = undefined; e.ai.lastSeenT = 0; botInitWeapons(e); }
 }
 
@@ -1504,9 +1515,50 @@ let matchOver = false;
 // to shoot the computer (core); lose the computer and the fort falls. Survive every wave to win.
 let WAVES = 6;
 const WAVE = { n: 0, phase: 'prep', t: 0, queue: 0, hp: 100, left: 0, core: 100 };
+// Roles: the Master and the Apprentice hold the tower with the Computer (always an NPC). Alone you are the Master;
+// with a friend the host's pick holds and the friend takes the other role; anyone after that attacks as a Midas soldier.
+const ROLES = {
+  master:     { name: 'Master',        model: 6, hp: 200, inv: ['rifle', 'pistol'],   nades: 4 },
+  apprentice: { name: 'Apprentice',    model: 5, hp: 100, inv: ['pistol'],            nades: 0 },
+  atk:        { name: 'Midas soldier', model: 0, hp: 100, inv: ['carbine', 'pistol'], nades: 0 },
+};
+const kitOf = e => (MODE === 'defend' && ROLES[e.role]) || null;
+const isAtk = e => !!(e.bot || e.role === 'atk');
+const maxHp = e => { const k = kitOf(e); return k ? k.hp : 100; };
+const maxNades = e => { const k = kitOf(e); return k ? k.nades : MAX_NADES; };
+let hostPick = 'master';
+// Host: returns the entities whose role changed so they can be re-equipped
+function assignRoles() {
+  const mate = remotes.find(r => r.role === 'master' || r.role === 'apprentice') || remotes.find(r => !r.role);
+  for (const r of remotes) if (r !== mate && !r.role) r.role = 'atk';
+  const mine = mate ? hostPick : 'master', theirs = mine === 'master' ? 'apprentice' : 'master', changed = [];
+  if (P.role !== mine) { P.role = mine; changed.push(P); }
+  if (mate && mate.role !== theirs) { mate.role = theirs; changed.push(mate); }
+  return changed;
+}
+function rekit(list) {
+  for (const e of list) {
+    if (e === P) { if (P.alive) applyPlayerKit(); else if (MODELS.length) setPlayerModel(ROLES[P.role].model); }
+    else if (e.isRemote) { setRemoteModel(e, ROLES[e.role].model); respawn(e); }
+  }
+  if (NET.role === 'host') setPreview(ROLES[hostPick].model);
+}
+// Your own loadout, health and look for your role (host or guest)
+function applyPlayerKit() {
+  const k = kitOf(P); if (!k) return;
+  if (MODELS.length && playerModelIdx !== k.model) setPlayerModel(k.model);
+  P.health = k.hp; P.nades = k.nades;
+  for (const id of k.inv) if (!P.ammoBy[id]) { P.inv.push(id); P.ammoBy[id] = { mag: WEAPONS[id].mag, res: WEAPONS[id].startRes }; }
+  P.inv = k.inv.filter(id => P.ammoBy[id]);
+  selectWeapon(k.inv[0], true);
+}
+document.querySelectorAll('#roles button').forEach(b => b.onclick = () => {
+  hostPick = b.dataset.role; document.querySelectorAll('#roles button').forEach(x => x.classList.toggle('on', x === b));
+  rekit(assignRoles());
+});
 const WAVE_BREAK = 12, SIEGE_RATE = 0.8; // seconds between waves; gate health lost per second per attacker at it
 const ATK_SPEED = 0.7; // attackers move at this fraction of normal bot speed
-const waveSize = n => 4 + 3 * (n - 1);
+const WAVE_SIZE = 20, waveSize = () => WAVE_SIZE; // attackers per wave; "Attackers at once" caps how many are on the field
 const gateOpen = () => !!(TG && TG.gate && TG.gate.open);
 // Outside the gate and close enough to be battering at it
 function atGate(e) { const [gx, gz] = LV.gate.at; return e.pos.z > gz - 1.5 && e.pos.y < 35 && Math.hypot(e.pos.x - gx, e.pos.z - gz) < 6.5; }
@@ -1539,12 +1591,14 @@ function waveNote(text) { note(text, 3); netFx({ t: 'wn', x: text }); }
 function startWave() {
   WAVE.n++; WAVE.phase = 'fight'; WAVE.queue = waveSize(WAVE.n); if (!WAVE.broken) setGate(false);
   bots.forEach(b => { b.respawnT = Math.random() * 3; });
+  for (const r of remotes) if (r.role === 'atk' && !r.alive) respawn(r); // attacking players come back with each wave
   waveNote(`Wave ${WAVE.n} of ${WAVES}: ${WAVE.broken ? 'the gate is gone' : 'the gate is shut'} and they're coming over the hills`); sTone([330, 392, 330, 392], 0.16, 'square', 0.1);
 }
 function updateWaves(dt) {
   if (MODE !== 'defend' || matchOver) return;
   let alive = 0, siege = 0;
   for (const b of bots) if (b.alive) { alive++; if (atGate(b)) siege++; }
+  for (const r of remotes) if (r.alive && r.role === 'atk' && atGate(r)) siege++;
   WAVE.left = alive + WAVE.queue;
   if (WAVE.phase === 'prep') {
     const was = WAVE.t; WAVE.t -= dt;
@@ -1575,7 +1629,7 @@ function attackerSpawn() {
 function damage(t, amt, attacker, weapon, head) {
   if (NET.role === 'guest') { if (attacker === P) netSendHit(t, amt, weapon, head); return; }
   if (!t.alive || matchOver) return;
-  if (MODE === 'defend' && attacker !== t && !!attacker.bot === !!t.bot) return; // no friendly fire
+  if (MODE === 'defend' && attacker !== t && isAtk(attacker) === isAtk(t)) return; // no friendly fire
   t.health -= amt;
   if (t.isRemote) sendTo(t, { t: 'hurt', a: amt });
   if (t.isPlayer) hurtFx(amt);
@@ -1602,7 +1656,7 @@ function resetMatch() {
   clearCorpses();
   matchOver = false;
   if (MODE === 'defend') {
-    Object.assign(WAVE, { n: 0, phase: 'prep', t: 8, queue: 0, hp: 100, core: 100, broken: false }); setGate(true);
+    Object.assign(WAVE, { n: 0, phase: 'prep', t: 8, queue: 0, hp: 100, core: 100, broken: false }); if (CN) CN.cd = 0; setGate(true);
     ents.forEach(e => { if (!e.bot) respawn(e); });
     note('The first wave is on its way. Man the walls', 4);
   } else ents.forEach(respawn);
@@ -1688,9 +1742,9 @@ function updateHeals(dt) {
   for (const h of HEALS) {
     if (!h.active) { h.t -= dt; if (h.t <= 0) setHeal(h, true); continue; }
     for (const e of ents) {
-      if (!e.alive || e.health >= 100 || (MODE === 'defend' && e.bot)) continue;
+      if (!e.alive || e.health >= maxHp(e) || (MODE === 'defend' && isAtk(e))) continue;
       if (Math.hypot(e.pos.x - h.pos.x, e.pos.z - h.pos.z) < 1.0 && Math.abs(e.pos.y - h.pos.y) < 1.2) {
-        e.health = 100; setHeal(h, false); h.t = 30;
+        e.health = maxHp(e); setHeal(h, false); h.t = 30;
         if (e.isRemote) sendTo(e, { t: 'heal' });
         if (e.isPlayer) note('Health restored', 1);
         break;
@@ -1733,7 +1787,7 @@ function updateAmmo(dt, now) {
     if (!a.active) { a.t -= dt; if (a.t <= 0) { a.active = true; a.mesh.visible = true; } continue; }
     a.mesh.rotation.y += dt; a.mesh.position.y = a.pos.y + 0.3 + Math.sin(now / 400) * 0.05;
     for (const e of ents) {
-      if (!e.alive || (a.nade ? e.nades >= MAX_NADES : !needsAmmo(e))) continue;
+      if (!e.alive || (a.nade ? e.nades >= maxNades(e) : !needsAmmo(e))) continue;
       if (Math.hypot(e.pos.x - a.pos.x, e.pos.z - a.pos.z) < 1.0 && Math.abs(e.pos.y - a.pos.y) < 1.2) {
         if (a.nade) e.nades++; else giveAmmoAll(e);
         if (e.isRemote) sendTo(e, { t: a.nade ? 'nade' : 'ammo' });
@@ -1785,8 +1839,10 @@ function placeProps() {
   if (propGroup) scene.remove(propGroup);
   propGroup = new THREE.Group(); scene.add(propGroup);
   GASCANS.length = 0; pendingGas.length = 0; HEALS.length = 0;
-  // Mesh levels (Fortress): white health boxes with a red cross at the level's listed spots
+  // Mesh levels (Fortress): white health boxes with a red cross at the level's listed spots, and the Computer's cannon
+  CN = null; shells.forEach(sh => scene.remove(sh.mesh)); shells.length = 0;
   if (TG) {
+    if (LV.cannon) CN = buildCannon(settle(LV.cannon));
     for (const spot of LV.heals || []) {
       const p = settle(spot), g = new THREE.Group(), box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.45), HEAL_MAT);
       const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.02, 0.1), CROSS_MAT), bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.34), CROSS_MAT);
@@ -1915,7 +1971,7 @@ function giveWeapon(e, id, ammo) {
   return true;
 }
 function dropWeapons(e) {
-  if (!e.inv) return; syncE(e);
+  if (!e.inv || MODE === 'defend') return; syncE(e); // Fortress loadouts are fixed: nobody drops guns
   let k = 0;
   for (const id of e.inv) {
     if (id === 'pistol') continue;
@@ -1980,7 +2036,7 @@ function updateGun(dt) {
     if (P.reloading <= 0) { const take = Math.min(WP().mag - P.ammo, P.reserve); P.ammo += take; P.reserve -= take; }
     return;
   }
-  const want = WP().auto ? mouseDown : clickQ;
+  const want = !monitorOpen && (WP().auto ? mouseDown : clickQ);
   if (want && gun.cd <= 0 && P.alive && knifeT <= 0 && throwT <= 0 && switchT <= 0) {
     clickQ = false;
     if (P.ammo <= 0) { if (P.reserve > 0) reload(); else { note('Out of ammo — find an ammo box or pick up a weapon'); gun.cd = 0.4; } return; }
@@ -2068,7 +2124,7 @@ function findTarget(b) {
   const def = MODE === 'defend';
   let best = null, bd = def ? (b.ai.route >= LV.route.length ? 12 : 80) : 55; // in the tower room they only turn from the computer for close threats
   for (const o of ents) {
-    if (o === b || !o.alive || (def && o.bot)) continue;
+    if (o === b || !o.alive || (def && isAtk(o))) continue;
     const d = b.pos.distanceTo(o.pos);
     if (d < bd && los(b, o)) { bd = d; best = o; }
   }
@@ -2229,6 +2285,8 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') setMute(!VOICE.muted);
   if (e.code === 'KeyF') playerKnife();
   if (e.code === 'KeyG') playerNade();
+  if (e.code === 'KeyE') { if (!P.alive && MODE === 'defend' && P.role === 'atk' && NET.role === 'guest') { if (NET.conn && NET.conn.open) NET.conn.send({ t: 'take' }); } else if (monitorOpen || nearComputer(P)) setMonitor(!monitorOpen); }
+  if (e.code === 'Space' && monitorOpen) toggleGate();
   const dn = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
   if (dn !== undefined && P.inv[dn] && P.inv[dn] !== curW && P.alive) selectWeapon(P.inv[dn]);
 });
@@ -2266,7 +2324,7 @@ function updatePlayer(dt) {
   if (keys.KeyC || tCrouch) P.h = CROUCH_H;
   else if (P.h < STAND_H && !blockedAt(P.pos.x, P.pos.y, P.pos.z, STAND_H)) P.h = STAND_H;
   const crouched = P.h < STAND_H;
-  const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), s = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  const f = monitorOpen ? 0 : (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), s = monitorOpen ? 0 : (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0); // standing at the computer
   const ff = f - joy.y, ss = s + joy.x;
   const sn = Math.sin(P.yaw), cs = Math.cos(P.yaw);
   let wx = -sn * ff + cs * ss, wz = -cs * ff - sn * ss;
@@ -2279,7 +2337,7 @@ function updatePlayer(dt) {
   const k = Math.min(1, (P.onGround ? 12 : 2.5) * dt);
   P.vel.x += (wx * speed - P.vel.x) * k;
   P.vel.z += (wz * speed - P.vel.z) * k;
-  if (keys.Space && P.onGround) P.vel.y = JUMP;
+  if (keys.Space && P.onGround && !monitorOpen) P.vel.y = JUMP;
   bodyBlock(P, dt);
   physics(P, dt);
   if (P.pos.y < KILL_Y) damage(P, 999, P, 'fall', false);
@@ -2363,7 +2421,7 @@ function updateVM(dt) {
 const hud = { hp: -1, ammo: '', nades: -1 };
 function updateHUD(dt) {
   // Health: a bar that shrinks toward the right edge, green when full fading through yellow to red at 0
-  const hp = Math.max(0, Math.min(100, Math.ceil(P.health)));
+  const hp = Math.max(0, Math.min(100, Math.ceil(P.health / maxHp(P) * 100)));
   if (hp !== hud.hp) { hud.hp = hp; const el = $('hp'); el.style.width = hp + '%'; el.style.background = `hsl(${hp * 1.2},75%,45%)`; }
   // Ammo: one rectangle per round, white for the magazine then grey for reserve; grenades are dots above
   const reloading = P.reloading > 0, key = `${P.ammo},${P.reserve},${reloading},${innerWidth}`;
@@ -2379,9 +2437,9 @@ function updateHUD(dt) {
   }
   if (P.nades !== hud.nades) { hud.nades = P.nades; $('nades').innerHTML = '<i></i>'.repeat(P.nades); }
   if (MODE === 'defend') {
-    const hp = Math.ceil(WAVE.hp), core = Math.ceil(WAVE.core), prep = WAVE.phase === 'prep', down = gateOpen() && !prep, wv = WAVE.phase === 'prep' ? (WAVE.n ? `Wave ${WAVE.n + 1} of ${WAVES} in ${Math.ceil(WAVE.t)}s` : `First wave in ${Math.ceil(WAVE.t)}s`) : `Wave ${WAVE.n} of ${WAVES}   ·   Attackers left ${WAVE.left}`;
-    $('top').textContent = `${wv}   ·   ${down ? 'Gate down' : prep ? (hp <= 0 ? 'Gate destroyed' : `Gate open (${hp}%)`) : `Gate ${hp}%`}   ·   Computer ${core}%   ·   You ${P.kills}/${P.deaths}`;
-    $('top').classList.toggle('alert', !prep && (down || hp <= 30 || core < 100));
+    const hp = Math.ceil(WAVE.hp), core = Math.ceil(WAVE.core), prep = WAVE.phase === 'prep', down = gateOpen() && !prep && hp <= 0, ajar = gateOpen() && hp > 0, wv = WAVE.phase === 'prep' ? (WAVE.n ? `Wave ${WAVE.n + 1} of ${WAVES} in ${Math.ceil(WAVE.t)}s` : `First wave in ${Math.ceil(WAVE.t)}s`) : `Wave ${WAVE.n} of ${WAVES}   ·   Attackers left ${WAVE.left}`;
+    $('top').textContent = `${wv}   ·   ${hp <= 0 ? (down ? 'Gate down' : 'Gate destroyed') : ajar ? `Gate open (${hp}%)` : `Gate ${hp}%`}   ·   Computer ${core}%   ·   You ${P.kills}/${P.deaths}`;
+    $('top').classList.toggle('alert', !prep && (gateOpen() || hp <= 30 || core < 100));
   } else {
     const leader = ents.reduce((a, b) => (b.kills > a.kills ? b : a));
     $('top').textContent = `First to ${KILL_LIMIT}   ·   Leader: ${leader.name} ${leader.kills}   ·   You ${P.kills}/${P.deaths}`;
@@ -2421,7 +2479,7 @@ function applySettings() {
   P.name = ($('pname').value.trim() || 'You').slice(0, 16);
   const lim = +$('sglimit').value;
   if (lim !== KILL_LIMIT) { KILL_LIMIT = lim; updateGoal(); }
-  if (+$('schar').value !== playerModelIdx) setPlayerModel(+$('schar').value);
+  if (MODE !== 'defend' && +$('schar').value !== playerModelIdx) setPlayerModel(+$('schar').value);
   if (NET.role === 'guest') { if (NET.conn && NET.conn.open) NET.conn.send({ t: 'hello', name: P.name, model: playerModelIdx }); return; }
   const waves = +$('swaves').value;
   if (selLevel !== curLevel) { WAVES = waves; switchLevel(selLevel); resetMatch(); }
@@ -2437,7 +2495,7 @@ function setPlaying(on) {
   $('overlay').style.display = on || matchOver ? 'none' : 'flex';
   $('play').textContent = 'Resume';
   if (!on) {
-    closeChat(); setAway(false);
+    closeChat(); setAway(false); setMonitor(false);
     mouseDown = mouseRight = false; for (const k in keys) keys[k] = false; boardOpen = false;
     joy.x = joy.y = 0; joy.id = look.id = fireId = jumpId = null;
     $('joy').style.display = 'none';
@@ -2445,7 +2503,7 @@ function setPlaying(on) {
 }
 $('play').onclick = () => {
   initAudio(); if (NET.role === 'guest' || remotes.length) getMic();
-  if (NET.role === 'guest') { P.name = ($('pname').value.trim() || 'Guest').slice(0, 16); if (+$('schar').value !== playerModelIdx) setPlayerModel(+$('schar').value); if (!NET.peer) startGuest(); }
+  if (NET.role === 'guest') { P.name = ($('pname').value.trim() || 'Guest').slice(0, 16); if (MODE !== 'defend' && +$('schar').value !== playerModelIdx) setPlayerModel(+$('schar').value); if (!NET.peer) startGuest(); }
   if (!isTouch) { renderer.domElement.requestPointerLock(); return; }
   const el = document.documentElement;
   if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
@@ -2547,7 +2605,7 @@ function initPreview() {
   const dl = new THREE.DirectionalLight(0xffffff, 0.6); dl.position.set(1, 2, 2); sc.add(dl);
   const cam = new THREE.PerspectiveCamera(30, 240 / 280, 0.05, 20);
   prev = { r, sc, cam, rig: null };
-  setPreview(+$('schar').value);
+  setPreview(ROLES[NET.role === 'host' ? hostPick : 'apprentice'].model);
   $('schar').onchange = e => setPreview(+e.target.value);
 }
 function setPreview(i) {
@@ -2679,6 +2737,162 @@ function stepSound(e, dt) {
 }
 function sDeath() { sTone([392, 294, 196], 0.12, 'triangle', 0.2); }
 
+// ---------- The Computer's cannon ----------
+// A heavy gun on a tripod on the tower roof. The Computer aims it at the closest attacker it can reach and fires a shell
+// that bursts like a grenade where it lands, then needs 10 s to recharge. It can't tilt down far enough to hit the foot of
+// the fort, so attackers at the gate are safe from it.
+const CANNON = { reload: 10, turn: 0.9, minPitch: -0.6, maxPitch: 0.4, speed: 55, range: 170, R: 8.05, dmg: 130, len: 1.7 };
+const CPU = { name: 'Computer', role: 'computer', id: 'cpu', kills: 0, deaths: 0 };
+let CN = null;
+const shells = [];
+const CN_METAL = new THREE.MeshLambertMaterial({ color: 0x3b4148 }), CN_DARK = new THREE.MeshLambertMaterial({ color: 0x23272b });
+const shellGeo = new THREE.SphereGeometry(0.16, 10, 8), shellMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });
+function buildCannon(at) {
+  const g = new THREE.Group(), pivotY = 1.25; g.position.copy(at); propGroup.add(g);
+  const mesh = (geo, mat, parent) => { const o = new THREE.Mesh(geo, mat); o.castShadow = true; parent.add(o); return o; };
+  for (let i = 0; i < 3; i++) { // tripod legs from the pivot down to the roof
+    const a = i * Math.PI * 2 / 3, foot = new V3(Math.sin(a) * 0.75, 0, Math.cos(a) * 0.75), top = new V3(0, pivotY, 0), mid = foot.clone().add(top).multiplyScalar(0.5);
+    const leg = mesh(new THREE.CylinderGeometry(0.035, 0.045, foot.distanceTo(top), 6), CN_DARK, g);
+    leg.position.copy(mid); leg.quaternion.setFromUnitVectors(new V3(0, 1, 0), top.clone().sub(foot).normalize());
+  }
+  const head = new THREE.Group(); head.position.y = pivotY; g.add(head);
+  mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.18, 12), CN_DARK, head);
+  const tilt = new THREE.Group(); head.add(tilt);
+  const barrel = mesh(new THREE.CylinderGeometry(0.11, 0.15, CANNON.len + 0.3, 14).rotateX(Math.PI / 2), CN_METAL, tilt); barrel.position.z = CANNON.len / 2 - 0.15;
+  mesh(new THREE.BoxGeometry(0.36, 0.32, 0.5), CN_METAL, tilt).position.z = -0.35;
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0x40ff80 })); light.position.set(0, 0.2, -0.35); tilt.add(light);
+  return { g, head, tilt, light, pivot: new V3(at.x, at.y + pivotY, at.z), yaw: 0, pitch: 0, cd: 0, target: null, scanT: 0 };
+}
+function cannonAim(p) { const d = p.clone().sub(CN.pivot); return [Math.atan2(d.x, d.z), Math.atan2(d.y, Math.hypot(d.x, d.z))]; }
+function cannonMuzzle(yaw = CN.yaw, pitch = CN.pitch) {
+  const c = Math.cos(pitch); return CN.pivot.clone().add(new V3(Math.sin(yaw) * c, Math.sin(pitch), Math.cos(yaw) * c).multiplyScalar(CANNON.len));
+}
+// The closest attacker the cannon can tilt to and see
+function cannonTarget() {
+  let best = null, bd = CANNON.range;
+  for (const e of ents) {
+    if (!e.alive || !isAtk(e)) continue;
+    const m = midPos(e), d = m.distanceTo(CN.pivot); if (d >= bd) continue;
+    const [yaw, pitch] = cannonAim(m);
+    if (pitch < CANNON.minPitch || pitch > CANNON.maxPitch || !losPts(cannonMuzzle(yaw, pitch), m)) continue;
+    bd = d; best = e;
+  }
+  return best;
+}
+function updateCannon(dt) {
+  if (!CN || MODE !== 'defend') return;
+  CN.cd = Math.max(0, CN.cd - dt);
+  if ((CN.scanT -= dt) <= 0) { CN.scanT = 0.3; CN.target = cannonTarget(); }
+  const t = CN.target && CN.target.alive ? CN.target : null; if (!t) return;
+  const [yaw, pitch] = cannonAim(midPos(t)), step = CANNON.turn * dt;
+  CN.yaw = turn(CN.yaw, yaw, step); CN.pitch += Math.max(-step, Math.min(step, pitch - CN.pitch));
+  if (CN.cd <= 0 && Math.abs(wrap(yaw - CN.yaw)) < 0.015 && Math.abs(pitch - CN.pitch) < 0.015) fireCannon(t);
+}
+function fireCannon(t) {
+  CN.cd = CANNON.reload;
+  const o = cannonMuzzle(), dir = midPos(t).sub(o), dist = dir.length(); dir.divideScalar(dist);
+  const end = o.clone().addScaledVector(dir, Math.min(dist, tgRay(o.x, o.y, o.z, dir.x, dir.y, dir.z, dist)));
+  spawnShell(o, end, true); netFx({ t: 'cs', a: arr(o), b: arr(end) });
+}
+function spawnShell(a, b, live) {
+  const m = new THREE.Mesh(shellGeo, shellMat); m.position.copy(a); scene.add(m);
+  const dir = b.clone().sub(a), left = dir.length(); dir.divideScalar(left || 1);
+  shells.push({ mesh: m, dir, left, end: b, live });
+  _boomFx(a, 0.7); sBoom(vol(a, 160) * 0.8);
+}
+function updateShells(dt) {
+  for (let i = shells.length - 1; i >= 0; i--) {
+    const sh = shells[i], step = Math.min(sh.left, CANNON.speed * dt);
+    sh.mesh.position.addScaledVector(sh.dir, step); sh.left -= step;
+    if (sh.left > 0) continue;
+    scene.remove(sh.mesh); shells.splice(i, 1);
+    if (sh.live && NET.role === 'host') boom(sh.end, CPU, CANNON.R, CANNON.dmg);
+  }
+}
+function updateCannonVis() {
+  if (!CN) return;
+  CN.head.rotation.y = CN.yaw; CN.tilt.rotation.x = -CN.pitch;
+  CN.light.material.color.setHex(CN.cd > 0 ? 0xff5030 : 0x40ff80);
+}
+
+// ---------- The Computer's monitor: a map with the attackers on it, and the gate switch ----------
+let monitorOpen = false, mapBg = null, mapLevel = null, mapBox = null;
+function nearComputer(e) {
+  if (MODE !== 'defend' || !LV || !LV.core || !e.alive || isAtk(e)) return false;
+  const [x, y, z] = LV.core.at; return Math.hypot(e.pos.x - x, e.pos.z - z) < 2.2 && Math.abs(e.pos.y - y) < 2;
+}
+function setMonitor(on) {
+  monitorOpen = !!on; $('cpu').style.display = monitorOpen ? 'block' : 'none';
+  if (monitorOpen) { mouseDown = false; clickQ = false; drawMap(); }
+}
+function toggleGate() {
+  if (NET.role === 'guest') { if (NET.conn && NET.conn.open) NET.conn.send({ t: 'gate' }); return; }
+  switchGate(P);
+}
+// Host: someone at the computer flips the gate
+function switchGate(e) {
+  if (!nearComputer(e) || matchOver) return;
+  if (WAVE.broken) { if (e === P) note('The gate is destroyed', 1.5); else sendTo(e, { t: 'wn', x: 'The gate is destroyed' }); return; }
+  const open = !gateOpen(); setGate(open); waveNote(`${e.name} ${open ? 'opened' : 'closed'} the gate`);
+}
+// Host: a dead attacking player takes over the soldier closest to the gate
+function takeOver(r) {
+  if (MODE !== 'defend' || r.role !== 'atk' || r.alive || matchOver) return;
+  let best = null, bd = Infinity; const [gx, gz] = LV.gate.at;
+  for (const b of bots) if (b.alive) { const d = Math.hypot(b.pos.x - gx, b.pos.z - gz); if (d < bd) { bd = d; best = b; } }
+  if (!best) { sendTo(r, { t: 'wn', x: 'No soldiers left to take over. You come back with the next wave' }); return; }
+  const hp = best.health, at = best.pos.clone(), yaw = best.yaw + Math.PI;
+  best.alive = false; best.mesh.visible = false; best.respawnT = 2; // its slot sends in the next soldier of the wave
+  respawn(r, at, yaw); r.health = Math.min(hp, maxHp(r));
+  sendTo(r, { t: 'wn', x: `You took over ${best.name}` });
+}
+function updateComputer() {
+  const near = locked && !chatOpen && nearComputer(P);
+  if (monitorOpen && !near) setMonitor(false);
+  $('cprompt').style.display = near && !monitorOpen ? 'block' : 'none';
+  if (monitorOpen) drawMap();
+}
+// The level's floors as a top-down picture, attackers' side (+z) at the top, as seen looking out from the fort
+function buildMapBg() {
+  const c = document.createElement('canvas'); c.width = GW; c.height = GD;
+  const g = c.getContext('2d'), img = g.createImageData(GW, GD);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < N; i++) if (H[i] !== SOLID) { lo = Math.min(lo, H[i]); hi = Math.max(hi, H[i]); }
+  for (let r = 0; r < GD; r++) for (let col = 0; col < GW; col++) {
+    const h = H[idx(col, r)], o = ((GD - 1 - r) * GW + (GW - 1 - col)) * 4, t = (h - lo) / (hi - lo || 1);
+    if (h === SOLID) img.data.set([22, 38, 46, 255], o); else img.data.set([40 + 110 * t, 70 + 120 * t, 50 + 80 * t, 255], o);
+  }
+  g.putImageData(img, 0, 0);
+  // Crop to the land (plus a margin), keeping the canvas's shape
+  let c0 = GW, c1 = 0, r0 = GD, r1 = 0;
+  for (let r = 0; r < GD; r++) for (let col = 0; col < GW; col++) if (H[idx(col, r)] !== SOLID) { c0 = Math.min(c0, col); c1 = Math.max(c1, col); r0 = Math.min(r0, r); r1 = Math.max(r1, r); }
+  const cv = $('cmap'), aspect = cv.width / cv.height;
+  let w = c1 - c0 + 5, h = r1 - r0 + 5; if (w / h > aspect) h = w / aspect; else w = h * aspect;
+  const mc = (c0 + c1 + 1) / 2, mr = (r0 + r1 + 1) / 2;
+  mapBox = { x: GW - mc - w / 2, y: GD - mr - h / 2, w, h }; // in background pixels (flipped grid)
+  return c;
+}
+function drawMap() {
+  if (mapLevel !== curLevel) { mapBg = buildMapBg(); mapLevel = curLevel; }
+  const cv = $('cmap'), g = cv.getContext('2d'), B = mapBox, sx = cv.width / B.w, sz = cv.height / B.h;
+  const X = x => (GW - (x - OX) / CS - B.x) * sx, Z = z => (GD - (z - OZ) / CS - B.y) * sz;
+  g.fillStyle = 'rgb(22,38,46)'; g.fillRect(0, 0, cv.width, cv.height);
+  g.imageSmoothingEnabled = false; g.drawImage(mapBg, B.x, B.y, B.w, B.h, 0, 0, cv.width, cv.height);
+  const [gx, gz] = LV.gate.at, gateCol = WAVE.broken ? '#ff4b3a' : gateOpen() ? '#ffd23f' : '#9fd8ff';
+  g.fillStyle = gateCol; g.fillRect(X(gx) - 7, Z(gz) - 2, 14, 4);
+  const [cx0, , cz0] = LV.core.at; g.fillStyle = '#5ff0ff'; g.fillRect(X(cx0) - 4, Z(cz0) - 4, 8, 8);
+  let n = 0;
+  for (const e of ents) {
+    if (!e.alive) continue;
+    const atk = isAtk(e); if (atk) n++;
+    g.fillStyle = atk ? '#ff4b3a' : e === P ? '#ffffff' : '#57e07a';
+    g.beginPath(); g.arc(X(e.pos.x), Z(e.pos.z), atk ? 3 : 4.5, 0, Math.PI * 2); g.fill();
+  }
+  const gate = WAVE.broken ? 'destroyed' : gateOpen() ? 'open' : `closed (${Math.ceil(WAVE.hp)}%)`;
+  const cannon = !CN ? '' : CN.cd > 0 ? `recharging ${Math.ceil(CN.cd)}s` : 'ready';
+  $('cpuinfo').textContent = `Gate ${gate} · Cannon ${cannon} · Attackers in sight ${n}`;
+}
+
 // ---------- Multiplayer: host-in-browser P2P (PeerJS / WebRTC) + voice chat ----------
 // The host's browser runs the match (bots, scoring, pickups, grenades). Guests open ?join=<hostId>,
 // simulate their own movement and aim, report hits, and render everyone else from host snapshots.
@@ -2707,6 +2921,7 @@ function applyFx(m) {
     case 'fd': feed(m.k, m.v, m.i); break;
     case 'wn': note(String(m.x || '').slice(0, 80), 3); break;
     case 'co': if (m.id !== NET.myId && MODELS[m.m]) spawnCorpseAt(m.m, v3(m.p), m.y); break;
+    case 'cs': spawnShell(v3(m.a), v3(m.b), false); break;
   }
 }
 function updateRoster() {
@@ -2743,13 +2958,14 @@ function onGuestMsg(conn, m) {
     if (!r) {
       r = makeEntity(name, false);
       Object.assign(r, { isRemote: true, conn, id: 'r' + NET.nextRid++, target: new V3(), inv: ['pistol'], ammoBy: { pistol: { mag: 12, res: 24 } }, wpn: 'pistol', spawnSeq: 0 });
-      remotes.push(r); setRemoteModel(r, m.model); ents.push(r);
+      remotes.push(r); ents.push(r);
+      const changed = assignRoles(); setRemoteModel(r, MODE === 'defend' ? ROLES[r.role].model : m.model); rekit(changed.filter(x => x !== r));
       sendTo(r, { t: 'welcome', id: r.id, level: curLevel, lim: KILL_LIMIT, over: matchOver, peers: [NET.peer.id, ...remotes.filter(x => x !== r).map(x => x.conn.peer)] });
       respawn(r);
-      note(`${name} joined`, 2); updateRoster(); getMic();
+      note(MODE === 'defend' ? `${name} joined as the ${ROLES[r.role].name}` : `${name} joined`, 2); updateRoster(); getMic();
     } else {
       r.name = name;
-      if ((m.model | 0) !== r.modelIdx) setRemoteModel(r, m.model);
+      if (MODE !== 'defend' && (m.model | 0) !== r.modelIdx) setRemoteModel(r, m.model);
       updateRoster();
     }
     return;
@@ -2772,7 +2988,9 @@ function onGuestMsg(conn, m) {
     case 'chat': { const x = String(m.x || '').replace(/\s+/g, ' ').trim().slice(0, 120); if (x) { chatLine(r.name, x, false); broadcast({ t: 'chat', n: r.name, x }, conn); } break; }
     case 'gas': if (GASCANS[m.i]) shootGas(GASCANS[m.i], r); break;
     case 'nade': throwNade(r, v3(m.o), v3(m.v), Math.max(0.01, Math.min(NADE_FUSE, +m.f || NADE_FUSE))); break;
-    case 'fx': if (m.m && m.m.t !== 'co' && m.m.t !== 'fd') { applyFx(m.m); broadcast(m.m, conn); } break;
+    case 'fx': if (m.m && m.m.t !== 'co' && m.m.t !== 'fd' && m.m.t !== 'cs') { applyFx(m.m); broadcast(m.m, conn); } break;
+    case 'gate': switchGate(r); break;
+    case 'take': takeOver(r); break;
   }
 }
 function removeRemote(conn) {
@@ -2780,10 +2998,11 @@ function removeRemote(conn) {
   const r = remotes[i]; remotes.splice(i, 1);
   scene.remove(r.mesh); const k = ents.indexOf(r); if (k >= 0) ents.splice(k, 1);
   note(`${r.name} left`, 2); updateRoster(); closeVoice(conn.peer);
+  rekit(assignRoles());
 }
 function updateRemotes(dt) {
   for (const r of remotes) {
-    if (!r.alive) { r.respawnT -= dt; if (r.respawnT <= 0) respawn(r); continue; }
+    if (!r.alive) { if (MODE !== 'defend' || r.role !== 'atk') { r.respawnT -= dt; if (r.respawnT <= 0) respawn(r); } continue; } // attackers wait for the next wave (or take over a soldier)
     r.pos.lerp(r.target, Math.min(1, dt * 14));
     r.mesh.position.copy(r.pos); r.mesh.rotation.y = smoothYaw(r, dt);
     r.onGround = Math.abs(r.vel.y) < 1;
@@ -2795,10 +3014,11 @@ function snapshot() {
   return {
     t: 'sn', lim: KILL_LIMIT, over: matchOver,
     wv: MODE === 'defend' ? [WAVE.n, WAVES, WAVE.left, Math.ceil(WAVE.hp), WAVE.phase === 'prep' ? +WAVE.t.toFixed(1) : -1, Math.ceil(WAVE.core), gateOpen() ? 1 : 0] : null,
+    cn: CN ? [+CN.yaw.toFixed(3), +CN.pitch.toFixed(3), +CN.cd.toFixed(1)] : null,
     e: ents.map(e => ({
       i: e.id, n: e.name, m: e.isPlayer ? playerModelIdx : (e.modelIdx !== undefined ? e.modelIdx : MODELS.indexOf(e.rig.model)),
       p: arr(e.pos), y: +(e.isPlayer ? e.yaw + Math.PI : e.yaw).toFixed(3), pt: +e.pitch.toFixed(2), c: e.h < STAND_H ? 1 : 0, a: e.alive, w: e.isPlayer ? curW : e.wpn,
-      hp: Math.ceil(e.health), k: e.kills, d: e.deaths,
+      hp: Math.ceil(e.health), k: e.kills, d: e.deaths, r: e.role || null,
     })),
     pk: PICKUPS.map(pk => [pk.key, pk.id, arr(pk.pos), pk.active ? 1 : 0]),
     am: ammoBoxes.map(a => (a.active ? 1 : 0)),
@@ -2822,9 +3042,11 @@ function startGuest() {
   peer.on('call', answerCall);
   peer.on('error', e => { $('netstat').textContent = e.type === 'peer-unavailable' ? 'Host not found. Ask them for a fresh link.' : 'Connection problem (' + e.type + ')'; });
 }
-function guestSpawn(p, y) {
-  P.pos.copy(p); P.vel.set(0, 0, 0); P.health = 100; P.alive = true; P.h = STAND_H; P.yaw = y; P.pitch = 0; P.viewY = p.y + 1.6;
-  P.nades = 2; $('msg').textContent = ''; initPlayerWeapons();
+function guestSpawn(p, y, role) {
+  const was = P.role; if (ROLES[role]) P.role = role;
+  P.pos.copy(p); P.vel.set(0, 0, 0); P.health = maxHp(P); P.alive = true; P.h = STAND_H; P.yaw = y; P.pitch = 0; P.viewY = p.y + 1.6;
+  P.nades = 2; $('msg').textContent = ''; initPlayerWeapons(); applyPlayerKit();
+  if (kitOf(P) && P.role !== was) { note(`You are the ${ROLES[P.role].name}`, 3); setPreview(ROLES[P.role].model); $('netstat').textContent = `You are the ${ROLES[P.role].name}`; }
 }
 function onHostMsg(m) {
   if (!m || typeof m !== 'object') return;
@@ -2836,16 +3058,18 @@ function onHostMsg(m) {
       break;
     case 'level': switchLevel(m.id); break;
     case 'sn': applySnapshot(m); break;
-    case 'spawn': NET.spawnSeq = m.n; guestSpawn(v3(m.p), m.y); break;
+    case 'spawn': NET.spawnSeq = m.n; guestSpawn(v3(m.p), m.y, m.k); break;
     case 'died':
       P.alive = false; P.health = 0; sDeath();
       $('msg').textContent = m.self ? (m.w === 'fall' ? 'You fell out of the map' : 'You blew yourself up') : `Killed by ${m.by}`;
+      if (MODE === 'defend' && P.role === 'atk') $('msg').textContent += '. Press E to take over a soldier, or wait for the next wave';
+      setMonitor(false);
       break;
     case 'hurt': hurtFx(Math.min(100, +m.a || 20)); break;
     case 'kill': sKill(); break;
     case 'give': if (WEAPONS[m.id]) giveWeapon(P, m.id, m.ammo); break;
     case 'ammo': giveAmmoAll(P); note('Ammo restocked', 1); break;
-    case 'nade': P.nades = Math.min(MAX_NADES, P.nades + 1); note('+1 grenade', 1); break;
+    case 'nade': P.nades = Math.min(maxNades(P), P.nades + 1); note('+1 grenade', 1); break;
     case 'heal': note('Health restored', 1); break;
     case 'chat': chatLine(String(m.n || '?').slice(0, 16), String(m.x || '').slice(0, 120), false); break;
     case 'end': showGuestResults(m); break;
@@ -2858,10 +3082,12 @@ function applySnapshot(s) {
   if (Array.isArray(s.wv)) {
     const [n, total, left, hp, t, core, open] = s.wv, was = WAVE.core;
     Object.assign(WAVE, { n: n | 0, left: left | 0, hp: +hp || 0, phase: t >= 0 ? 'prep' : 'fight', t: Math.max(0, +t || 0), core: core === undefined ? 100 : +core || 0 });
+    WAVE.broken = WAVE.hp <= 0; // the gate only breaks once, so a gate at 0% is gone for good
     if (WAVE.core < was) coreFlash = 0.12;
     setGate(!!open);
     if ((total | 0) !== WAVES) { WAVES = total | 0; updateGoal(); }
   }
+  if (s.cn && CN) { CN.yaw = +s.cn[0] || 0; CN.pitch = +s.cn[1] || 0; CN.cd = +s.cn[2] || 0; }
   const seen = new Set();
   for (const d of s.e) {
     if (d.i === NET.myId) { P.health = d.hp; P.kills = d.k; P.deaths = d.d; if (!d.a) P.alive = false; continue; }
@@ -2879,7 +3105,7 @@ function applySnapshot(s) {
     r.vel.copy(r.target).sub(r.prev).multiplyScalar(20);
     if (r.vel.length() > 25) r.vel.set(0, 0, 0);
     if (d.a && !r.alive) { r.pos.copy(r.target); r.yawV = d.y; }
-    Object.assign(r, { name: d.n, yaw: d.y, pitch: +d.pt || 0, h: d.c ? CROUCH_H : STAND_H, kills: d.k, deaths: d.d, health: d.hp, alive: d.a });
+    Object.assign(r, { name: d.n, yaw: d.y, pitch: +d.pt || 0, h: d.c ? CROUCH_H : STAND_H, kills: d.k, deaths: d.d, health: d.hp, alive: d.a, role: d.r || undefined });
     r.mesh.visible = d.a;
     if (d.w && d.w !== r.wpn && WEAPONS[d.w]) { r.wpn = d.w; setRigWeapon(r.rig, d.w); }
   }
@@ -3004,6 +3230,7 @@ function loop(now) {
     updateGun(dt);
     bots.forEach(b => updateBot(b, dt));
     updateWaves(dt);
+    updateCannon(dt);
     updateRemotes(dt);
     updateNades(dt);
     updateAmmo(dt, now);
@@ -3020,6 +3247,9 @@ function loop(now) {
   renderPreview(dt);
   updateFx(dt);
   updateGate(dt);
+  updateShells(dt);
+  updateCannonVis();
+  updateComputer();
   updateVM(dt);
   updateHUD(dt);
   updateChatbox();
