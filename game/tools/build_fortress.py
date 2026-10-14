@@ -5,7 +5,7 @@
 #                                props as boxes, no plants, plus the closed front gate as a box named Front_Gate
 # Run (from the game folder):
 #   "/Applications/Blender 5.2.app/Contents/MacOS/Blender" -b --python tools/build_fortress.py -- <render set .glb> models
-import bpy, sys, os, tempfile
+import bpy, bmesh, sys, os, tempfile
 from mathutils import Vector
 
 SRC, OUT = sys.argv[-2], sys.argv[-1]
@@ -21,13 +21,56 @@ DISPLAY_TRIS = {'Terrain': 90000, 'Flame': 4000, 'Computer_room_v04': 6000, 'Pal
 TEX_SIZE = {'Terrain_Base': 2048, 'Fort_': 2048, 'Ground': 1024, 'ephemera': 1024, 'Screen_Map': 1024, 'theshining': 1024, 'Midas_Battery': 1024}
 DEFAULT_TEX = 512
 # Collision: structure kept as (simplified) meshes; everything else becomes a box or is left out
-COL_TRIS = {'Terrain': 20000, 'fort_sculpt_2': 20000}  # the tower and its stairs stay exact: simplifying narrows the landings
+COL_TRIS = {'Terrain': 20000}  # the fort itself stays exact: simplifying narrows its doorways and landings
 COL_MESHES = {'Terrain', 'fort_sculpt_2', 'fort_sculpt_2.001', 'Fort Tower', 'Stairs', 'Stairs.001', 'Door Old Wood', 'Water'}
 COL_SKIP = ('Flame', 'Morel', 'Bush', 'Pear', 'Palm', 'Cypress', 'Mball', 'Ball trees', 'Big tree', 'Courtyard tree', 'ball flower',
             'Trunks', 'Red LED', 'Yellow LED', 'Catenary', 'Window', 'Mill work', 'Sign', 'theshining', 'Gauge', 'Dails', 'Botton Box',
             'Keyboard', 'Rack spacing', 'A', 'B', 'B.001')
 # The closed gate in the passage under the wall walk, in game coordinates (x, y up, z toward the attackers)
 GATE = ((-3.55, 33.45, 2.95), (-0.25, 36.5, 3.55))
+# Collision: every staircase becomes a smooth ramp, so you walk up instead of hopping step to step.
+# (x0, x1, z where it starts, floor y there, z where it ends, floor y there), game coordinates
+RAMPS = [
+    (-4.95, -3.45, 0.15, 33.51, -4.05, 37.15),  # courtyard up to the back corridor (west stairs)
+    (6.3, 7.6, 3.75, 37.07, -0.15, 40.52),      # tower: lower floor up to the landing
+    (3.12, 4.2, 0.5, 40.52, 4.3, 43.95),        # tower: landing up to the computer room
+    (4.95, 5.45, -0.25, 43.94, -1.3, 44.95),    # computer room: metal steps up to the ledge
+]
+# Collision: clear the way from the back corridor up the west walkway to the wall walk. The rock that pokes into the
+# passage by the wall walk is cut away, and the narrow doorway from the corridor into the walkway is widened to fit a body.
+# (material or None for any, (x0, x1), (z0, z1), (y0, y1)), game coordinates
+TRIM = [('Rock', (-7.6, -4.6), (2.6, 4.6), (37.0, 40.6)),
+        (None, (-6.75, -5.45), (-5.05, -3.85), (37.15, 39.4))]
+
+
+def cut_faces(o, inside):
+    """Delete the faces of o for which inside(game points of the face, material name) is true."""
+    bm = bmesh.new(); bm.from_mesh(o.data); mw = o.matrix_world
+    mats = [m.name if m else '' for m in o.data.materials]
+    doomed = []
+    for f in bm.faces:
+        pts = [mw @ v.co for v in f.verts]
+        if inside([(p.x, p.z, -p.y) for p in pts], mats[f.material_index] if f.material_index < len(mats) else ''): doomed.append(f)
+    if doomed: bmesh.ops.delete(bm, geom=doomed, context='FACES')
+    bm.to_mesh(o.data); bm.free(); o.data.update()
+    return len(doomed)
+
+
+def in_ramp(pts, r):
+    # a step face: its middle is over the ramp, and it lies between the ramp's ends and heights (it may poke out sideways)
+    x0, x1, za, ya, zb, yb = r
+    cx = sum(p[0] for p in pts) / len(pts)
+    return x0 <= cx <= x1 and all(min(za, zb) - 0.01 <= z <= max(za, zb) + 0.01 and min(ya, yb) - 0.05 <= y <= max(ya, yb) + 0.05
+                                  for x, y, z in pts)
+
+
+def add_ramp(r):
+    x0, x1, za, ya, zb, yb = r
+    d = 1 if zb > za else -1  # direction of travel up the ramp
+    # slope plus a short flat lip onto the top landing; the bottom edge dips just under the floor so there's no lip there
+    g = [(x0, ya - 0.05, za - d * 0.1), (x1, ya - 0.05, za - d * 0.1), (x1, yb, zb), (x0, yb, zb), (x1, yb, zb + d * 0.25), (x0, yb, zb + d * 0.25)]
+    me = bpy.data.meshes.new('Ramp'); me.from_pydata([(x, -z, y) for x, y, z in g], [], [(0, 1, 2, 3), (3, 2, 4, 5)])
+    o = bpy.data.objects.new('Ramp', me); bpy.context.scene.collection.objects.link(o)
 
 
 def load():
@@ -110,6 +153,12 @@ report('display', disp)
 
 # ---------- Collision version ----------
 load()
+for o in list(bpy.data.objects):  # stairs and stray rock out first, before anything is simplified
+    if o.name in COL_MESHES and o.name != 'Water':
+        n = cut_faces(o, lambda pts, mat: any(in_ramp(pts, r) for r in RAMPS) or any(
+            (m is None or mat == m) and xa <= sum(p[0] for p in pts) / len(pts) <= xb and za <= sum(p[2] for p in pts) / len(pts) <= zb
+            and ya <= sum(p[1] for p in pts) / len(pts) <= yb for m, (xa, xb), (za, zb), (ya, yb) in TRIM))  # faces whose middle is in the box
+        if n: print(f'CUT {o.name}: {n} faces')
 for o in list(bpy.data.objects):
     if o.name in COL_MESHES:
         t = COL_TRIS.get(o.name)
@@ -127,6 +176,7 @@ for o in list(bpy.data.objects):
 (gx0, gy0, gz0), (gx1, gy1, gz1) = GATE
 bpy.ops.mesh.primitive_cube_add(location=((gx0 + gx1) / 2, -(gz0 + gz1) / 2, (gy0 + gy1) / 2)); gate = bpy.context.object
 gate.scale = ((gx1 - gx0) / 2, (gz1 - gz0) / 2, (gy1 - gy0) / 2); bpy.ops.object.transform_apply(scale=True); gate.name = 'Front_Gate'
+for r in RAMPS: add_ramp(r)
 col = os.path.join(OUT, 'Fortress_v5_col.glb')
 export(col, export_materials='PLACEHOLDER', export_texcoords=False, export_normals=False)
 report('collision', col)

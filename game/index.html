@@ -201,13 +201,14 @@ body.touch .card small.tc{display:block}
     <dt>Swap</dt><dd>Next weapon</dd>
     <dt>Gyro</dt><dd>Aim by moving your phone</dd>
   </dl>
-  <div class="set hostonly"><label for="sbots"><span id="lbots">Bots</span> <output id="obots">8</output></label><input type="range" id="sbots" min="0" max="40" value="8"></div>
-  <div class="set hostonly"><label for="sdiff">Bot difficulty <output id="odiff">Normal</output></label><input type="range" id="sdiff" min="1" max="5" value="3"></div>
+  <div class="set hostonly" style="display:none"><label for="sbots"><span id="lbots">Bots</span> <output id="obots">8</output></label><input type="range" id="sbots" min="0" max="40" value="8"></div>
+  <div class="set hostonly"><label for="sdiff">Difficulty <output id="odiff">Normal</output></label><input type="range" id="sdiff" min="1" max="5" value="3"></div>
   <div class="set hostonly" id="setlimit"><label for="sglimit">Score limit <output id="oglimit">20</output></label><input type="range" id="sglimit" min="5" max="50" step="5" value="20"></div>
   <div class="set hostonly" id="setwaves" style="display:none"><label for="swaves">Waves to survive <output id="owaves">6</output></label><input type="range" id="swaves" min="3" max="15" value="6"></div>
   <button id="play" disabled>Loading characters…</button>
-  <small class="kb">Needs a mouse and keyboard. Changing the bot count restarts the match.</small>
-  <small class="tc">Best in landscape. Changing the bot count restarts the match.</small>
+  <button id="restart" class="hostonly" style="display:none">Restart game</button>
+  <small class="kb">Needs a mouse and keyboard.</small>
+  <small class="tc">Best in landscape.</small>
 </div>
 <div class="card" id="charcard">
   <h1 id="chartitle">Your character</h1>
@@ -1045,9 +1046,9 @@ function switchLevel(id) { if (NET.role === 'host') broadcast({ t: 'level', id }
 // Start screen and results show the rules of the selected level's mode
 function updateGoal() {
   const def = (NET.role === 'host' ? LEVEL_DEFS[selLevel]().mode : MODE) === 'defend';
-  $('goal').textContent = def ? `Hold the tower through ${NET.role === 'host' ? +$('swaves').value : WAVES} waves of ${WAVE_SIZE} Midas soldiers. The Master (rifle, pistol, 4 grenades, double health) holds the walls. The Apprentice (pistol) works the computer in the tower room: a map of the attackers and the gate switch. The Computer fires the cannon on the wall over the gate by itself. The gate only breaks once. Once inside, the attackers hunt you down: anyone who falls sits out the rest of the wave, and if everyone falls, the fort is lost.` : `First to ${KILL_LIMIT} kills wins.`;
+  $('goal').textContent = def ? `Survive ${WAVES} waves of Midas soldiers (${WAVE_SIZES.join(', then ')}). The Master (rifle, pistol, 4 grenades, double health) holds the walls. The Apprentice (pistol) works the computer in the tower room: a map of the attackers and the gate switch. The Computer fires the cannon on the wall over the gate by itself. The gate only breaks once. Once inside, the attackers hunt you down. If any defender dies, the fort is lost.` : `First to ${KILL_LIMIT} kills wins.`;
   $('mtitle').textContent = def ? 'Fortress defend' : 'Free for all';
-  $('setlimit').style.display = def ? 'none' : ''; $('setwaves').style.display = def ? '' : 'none';
+  $('setlimit').style.display = def ? 'none' : ''; $('setwaves').style.display = 'none'; // Fortress has a fixed number of waves
   $('lbots').textContent = def ? 'Attackers at once' : 'Bots';
 }
 
@@ -1518,7 +1519,7 @@ let matchOver = false;
 // ---------- Fortress defend: players hold the fort, bots attack in waves ----------
 // Attackers at the front gate wear it down (hp). When it breaks it drops into the ground and they head up the tower
 // to shoot the computer (core); lose the computer and the fort falls. Survive every wave to win.
-let WAVES = 6;
+let WAVES = 3;
 const WAVE = { n: 0, phase: 'prep', t: 0, queue: 0, hp: 100, left: 0, core: 100 };
 // Roles: the Master and the Apprentice hold the tower with the Computer (always an NPC). Alone you are the Master;
 // with a friend the host's pick holds and the friend takes the other role; anyone after that attacks as a Midas soldier.
@@ -1561,12 +1562,9 @@ document.querySelectorAll('#roles button').forEach(b => b.onclick = () => {
   hostPick = b.dataset.role; document.querySelectorAll('#roles button').forEach(x => x.classList.toggle('on', x === b));
   rekit(assignRoles());
 });
-// Defenders who fall during a wave sit it out and come back when it's cleared; if they're all down, the fort falls
-const downForWave = e => MODE === 'defend' && !isAtk(e) && WAVE.phase === 'fight';
-const defenders = () => ents.filter(e => !isAtk(e) && (e === P || e.isRemote));
 const WAVE_BREAK = 12, SIEGE_RATE = 0.8; // seconds between waves; gate health lost per second per attacker at it
 const ATK_SPEED = 0.7; // attackers move at this fraction of normal bot speed
-const WAVE_SIZE = 20, waveSize = () => WAVE_SIZE; // attackers per wave; "Attackers at once" caps how many are on the field
+const WAVE_SIZES = [4, 8, 12], waveSize = n => WAVE_SIZES[Math.min(n, WAVE_SIZES.length) - 1]; // attackers in each wave, all on the field at once
 const gateOpen = () => !!(TG && TG.gate && TG.gate.open);
 // Outside the gate and close enough to be battering at it
 function atGate(e) { const [gx, gz] = LV.gate.at; return e.pos.z > gz - 1.5 && e.pos.y < 35 && Math.hypot(e.pos.x - gx, e.pos.z - gz) < 6.5; }
@@ -1635,8 +1633,6 @@ function updateWaves(dt) {
     if (was > 4 && WAVE.t <= 4 && !WAVE.broken) waveNote('The gate closes in 4 seconds');
     if (WAVE.t <= 0) startWave(); return;
   }
-  const defs = defenders(); WAVE.da = defs.filter(e => e.alive).length; WAVE.dt = defs.length;
-  if (WAVE.phase === 'fight' && !WAVE.da) { endMatch(null, false); return; }
   if (siege && !gateOpen()) { WAVE.hp = Math.max(0, WAVE.hp - siege * SIEGE_RATE * dt); if (WAVE.hp <= 0) { WAVE.broken = true; setGate(true, true); } }
   if (!alive && WAVE.queue <= 0) {
     if (WAVE.n >= WAVES) { endMatch(null, true); return; }
@@ -1644,7 +1640,6 @@ function updateWaves(dt) {
     // and every health box is restocked
     WAVE.phase = 'prep'; WAVE.t = WAVE_BREAK; WAVE.hp = WAVE.broken ? 0 : Math.min(100, WAVE.hp + 10); WAVE.core = Math.min(100, WAVE.core + 10);
     setGate(true); HEALS.forEach(h => setHeal(h, true));
-    for (const e of defenders()) if (!e.alive) respawn(e); // the fallen are back for the break
     waveNote(`Wave ${WAVE.n} cleared. ${WAVE.broken ? 'The gate is gone for good' : 'The gate is open'}: restock and get back inside`); sTone([523, 659, 784], 0.12, 'square', 0.1);
   }
 }
@@ -1677,6 +1672,7 @@ function damage(t, amt, attacker, weapon, head) {
     if (t.isPlayer) sDeath(); else { spawnCorpse(t); t.mesh.visible = false; if (attacker.isPlayer) sKill(); }
     sGrunt(t.isPlayer ? 1 : vol(t.pos, 85)); netFx({ t: 'gr', id: t.id, p: arr(t.pos) });
     if (MODE !== 'defend' && attacker !== t && attacker.kills >= KILL_LIMIT) endMatch(attacker);
+    if (MODE === 'defend' && !isAtk(t)) { WAVE.fallen = t.name; endMatch(null, false); } // lose a defender, lose the fort
   }
 }
 function resetMatch() {
@@ -1701,11 +1697,11 @@ function endMatch(w, held) {
   const def = MODE === 'defend';
   if (def && !held) sTone([392, 330, 262, 196], 0.18, 'triangle', 0.16); else sTone([523, 659, 784, 1047], 0.14, 'square', 0.12);
   const title = def ? (held ? 'Fort defended' : 'The fort has fallen') : w.isPlayer ? 'You win' : `${w.name} wins`;
-  const sub = def ? (held ? `You held off all ${WAVES} waves.` : `The defenders fell on wave ${WAVE.n} of ${WAVES}.`) : '';
+  const sub = def ? (held ? `You held off all ${WAVES} waves.` : `${WAVE.fallen === P.name ? 'You' : WAVE.fallen || 'A defender'} fell on wave ${Math.max(1, WAVE.n)} of ${WAVES}.`) : '';
   const list = [...ents].filter(e => !def || !e.bot).sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
   showResults(title, sub, list.map(e => [e.id, e.name, e.kills, e.deaths]), P.id);
   $('slimit').value = KILL_LIMIT; $('olimit').textContent = KILL_LIMIT;
-  $('setnext').style.display = def ? 'none' : '';
+  $('setnext').style.display = def ? 'none' : ''; $('next').textContent = def ? 'Play again' : 'Next round';
   broadcast({ t: 'end', ttl: title, sub, wid: w ? w.id : null, wn: w ? w.name : '', rows: list.map(e => [e.id, e.name, e.kills, e.deaths]) });
   if (document.pointerLockElement) document.exitPointerLock(); else setPlaying(false);
 }
@@ -2429,7 +2425,7 @@ addEventListener('keydown', e => { if (away && e.code === 'Escape') setPlaying(f
 
 // ---------- Player ----------
 function updatePlayer(dt) {
-  if (!P.alive) { if (NET.role !== 'guest' && !downForWave(P)) { P.respawnT -= dt; if (P.respawnT <= 0) respawn(P); } return; }
+  if (!P.alive) { if (NET.role !== 'guest') { P.respawnT -= dt; if (P.respawnT <= 0) respawn(P); } return; }
   if (keys.KeyC || tCrouch) P.h = CROUCH_H;
   else if (P.h < STAND_H && !blockedAt(P.pos.x, P.pos.y, P.pos.z, STAND_H)) P.h = STAND_H;
   const crouched = P.h < STAND_H;
@@ -2547,7 +2543,7 @@ function updateHUD(dt) {
   if (P.nades !== hud.nades) { hud.nades = P.nades; $('nades').innerHTML = '<i></i>'.repeat(P.nades); }
   if (MODE === 'defend') {
     const hp = Math.ceil(WAVE.hp), core = Math.ceil(WAVE.core), prep = WAVE.phase === 'prep', down = gateOpen() && !prep && hp <= 0, ajar = gateOpen() && hp > 0, wv = WAVE.phase === 'prep' ? (WAVE.n ? `Wave ${WAVE.n + 1} of ${WAVES} in ${Math.ceil(WAVE.t)}s` : `First wave in ${Math.ceil(WAVE.t)}s`) : `Wave ${WAVE.n} of ${WAVES}   ·   Attackers left ${WAVE.left}`;
-    $('top').textContent = `${wv}   ·   ${hp <= 0 ? (down ? 'Gate down' : 'Gate destroyed') : ajar ? `Gate open (${hp}%)` : `Gate ${hp}%`}   ·   Defenders ${WAVE.da === undefined ? 1 : WAVE.da}/${WAVE.dt || 1}   ·   You ${P.kills}/${P.deaths}`;
+    $('top').textContent = `${wv}   ·   ${hp <= 0 ? (down ? 'Gate down' : 'Gate destroyed') : ajar ? `Gate open (${hp}%)` : `Gate ${hp}%`}   ·   You ${P.kills}/${P.deaths}`;
     $('top').classList.toggle('alert', !prep && (gateOpen() || hp <= 30 || core < 100));
   } else {
     const leader = ents.reduce((a, b) => (b.kills > a.kills ? b : a));
@@ -2590,19 +2586,19 @@ function applySettings() {
   if (lim !== KILL_LIMIT) { KILL_LIMIT = lim; updateGoal(); }
   if (MODE !== 'defend' && +$('schar').value !== playerModelIdx) setPlayerModel(+$('schar').value);
   if (NET.role === 'guest') { if (NET.conn && NET.conn.open) NET.conn.send({ t: 'hello', name: P.name, model: playerModelIdx }); return; }
-  const waves = +$('swaves').value;
+  const waves = MODE === 'defend' ? WAVE_SIZES.length : +$('swaves').value;
   if (selLevel !== curLevel) { WAVES = waves; switchLevel(selLevel); resetMatch(); }
   else if (MODE === 'defend' && waves !== WAVES) { WAVES = waves; resetMatch(); }
   const n = botTarget();
   if (n !== bots.length) { buildBots(n); resetMatch(); }
 }
 // Fortress defend always has attackers: the slider is how many are on the field at once
-function botTarget() { const n = +$('sbots').value; return MODE === 'defend' ? Math.max(2, n) : n; }
+function botTarget() { return MODE === 'defend' ? Math.max(...WAVE_SIZES) : +$('sbots').value; }
 function setPlaying(on) {
   if (on) applySettings();
   locked = on;
   $('overlay').style.display = on || matchOver ? 'none' : 'flex';
-  $('play').textContent = 'Resume';
+  $('play').textContent = 'Resume'; if (NET.role === 'host') $('restart').style.display = '';
   if (!on) {
     closeChat(); setAway(false); setMonitor(false);
     mouseDown = mouseRight = false; for (const k in keys) keys[k] = false; boardOpen = false;
@@ -2734,6 +2730,7 @@ function renderPreview(dt) {
 
 // ---------- Round results ----------
 $('slimit').oninput = e => $('olimit').textContent = e.target.value;
+$('restart').onclick = () => $('next').onclick();
 $('next').onclick = () => {
   initAudio();
   KILL_LIMIT = +$('slimit').value;
@@ -3111,7 +3108,7 @@ function removeRemote(conn) {
 }
 function updateRemotes(dt) {
   for (const r of remotes) {
-    if (!r.alive) { if ((MODE !== 'defend' || r.role !== 'atk') && !downForWave(r)) { r.respawnT -= dt; if (r.respawnT <= 0) respawn(r); } continue; } // attackers wait for the next wave (or take over a soldier)
+    if (!r.alive) { if (MODE !== 'defend' || r.role !== 'atk') { r.respawnT -= dt; if (r.respawnT <= 0) respawn(r); } continue; } // attackers wait for the next wave (or take over a soldier)
     r.pos.lerp(r.target, Math.min(1, dt * 14));
     r.mesh.position.copy(r.pos); r.mesh.rotation.y = smoothYaw(r, dt);
     r.onGround = Math.abs(r.vel.y) < 1;
@@ -3122,7 +3119,7 @@ function updateRemotes(dt) {
 function snapshot() {
   return {
     t: 'sn', lim: KILL_LIMIT, over: matchOver,
-    wv: MODE === 'defend' ? [WAVE.n, WAVES, WAVE.left, Math.ceil(WAVE.hp), WAVE.phase === 'prep' ? +WAVE.t.toFixed(1) : -1, Math.ceil(WAVE.core), gateOpen() ? 1 : 0, WAVE.da | 0, WAVE.dt | 0] : null,
+    wv: MODE === 'defend' ? [WAVE.n, WAVES, WAVE.left, Math.ceil(WAVE.hp), WAVE.phase === 'prep' ? +WAVE.t.toFixed(1) : -1, Math.ceil(WAVE.core), gateOpen() ? 1 : 0] : null,
     cn: CN ? [+CN.yaw.toFixed(3), +CN.pitch.toFixed(3), +CN.cd.toFixed(1)] : null,
     e: ents.map(e => ({
       i: e.id, n: e.name, m: e.isPlayer ? playerModelIdx : (e.modelIdx !== undefined ? e.modelIdx : MODELS.indexOf(e.rig.model)),
@@ -3189,7 +3186,7 @@ function onHostMsg(m) {
 function applySnapshot(s) {
   KILL_LIMIT = s.lim; matchOver = s.over;
   if (Array.isArray(s.wv)) {
-    const [n, total, left, hp, t, core, open, da, dtot] = s.wv, was = WAVE.core; WAVE.da = da; WAVE.dt = dtot;
+    const [n, total, left, hp, t, core, open] = s.wv, was = WAVE.core;
     Object.assign(WAVE, { n: n | 0, left: left | 0, hp: +hp || 0, phase: t >= 0 ? 'prep' : 'fight', t: Math.max(0, +t || 0), core: core === undefined ? 100 : +core || 0 });
     WAVE.broken = WAVE.hp <= 0; // the gate only breaks once, so a gate at 0% is gone for good
     if (WAVE.core < was) coreFlash = 0.12;
@@ -3320,9 +3317,9 @@ loadModels().then(() => {
   setPlayerModel(0);
   buildViewmodels();
   // Fortress is the only level: the host switches to it as soon as its mesh has loaded
-  if (NET.role === 'host') { WAVES = +$('swaves').value; switchLevel(selLevel); resetMatch(); }
+  if (NET.role === 'host') { WAVES = WAVE_SIZES.length; switchLevel(selLevel); resetMatch(); }
   else { buildPickups(); placeProps(); }
-  if (NET.role === 'host') { buildBots(botTarget()); bots.forEach(respawn); }
+  if (NET.role === 'host') { buildBots(botTarget()); if (MODE !== 'defend') bots.forEach(respawn); }
   else { P.alive = false; $('pname').placeholder = 'Your name'; }
   $('play').disabled = false; $('play').textContent = NET.role === 'guest' ? 'Join game' : 'Play';
   initPreview();
