@@ -1,32 +1,5 @@
 # Fortress
 
-My version of the Fortress defend level from Austin's FFA game ([austinrhermann/ffa-prototype](https://github.com/austinrhermann/ffa-prototype)), copied from its `main` branch on 2026-10-13 and changed since. Served at jamesnoellert.com/game.
+jamesnoellert.com/game forwards to the game at https://ffa-prototype.vercel.app/?level=fortress.
 
-## How it plays
-
-Survive three waves of Midas soldiers: 4, then 8, then 12. If any defender dies, the match is lost. The start screen has one setting, Difficulty, and the pause screen has Restart game.
-
-- **The Master**: Master rifle, laser pistol, 4 grenades, double health (200). Plays alone if nobody else joins.
-- **The Apprentice**: laser pistol only. Works the computer in the tower room.
-- **The Computer**: always an NPC. Fires the cannon on the wall over the gate by itself at the closest attacker it can aim at: a grenade-sized blast, then 10 s to recharge. It only faces out over the hills and can't tilt down far enough to reach the foot of the wall.
-
-Attackers batter the gate (two doors at the courtyard end of the passage, swinging inward). Once it's open they come in and hunt the defenders anywhere in the fort.
-
-Players: alone you're the Master. With a friend, the host picks Master or Apprentice and the friend gets the other. Everyone after the second joins the attackers as a Midas soldier (carbine and pistol). A dead attacker can press **E** to take over the NPC soldier closest to the gate, or waits for the next wave.
-
-**The computer** (tower room, press **E** next to it): a map of the area with every attacker on it, and **Space** opens or closes the gate. The gate only breaks once: after that it stays open for good.
-
-Other: white health boxes in the courtyard, on the wall walk, in the north building and in the tower room (attackers can't use them; they restock after each wave). Attackers move at 70% speed, carry Midas carbines and don't throw grenades. No spare guns lie around and nobody drops guns.
-
-## The set
-
-The level comes from James's render set export, turned into two files by `tools/build_fortress.py` (run it in Blender; the command is at the top of the script):
-
-- `models/Fortress_v5.glb` is what you see: characters, render helpers and the render cannon removed, heavy plants simplified, objects merged by material, textures shrunk to JPEG, geometry Draco-compressed (63 MB down to about 6 MB).
-- `models/Fortress_v5_col.glb` is what everything collides with, shoots at and walks on: simplified terrain, the fort exact, props as boxes, no plants, plus the closed gate as a box named `Front_Gate`. Every staircase is replaced by a smooth ramp, and the rock poking into the passage by the wall walk and the narrow doorway from the back corridor are trimmed so you can walk from the corridor up to the wall walk (see `RAMPS` and `TRIM` in the script).
-
-When the level loads, the host builds a fine walking map of every floor inside the fort from the collision file; attackers plan their paths on it.
-
-## Look
-
-Shading copies the Blender renders: a hard sun, lit surfaces show their texture colour, and surfaces turned away from the sun or in shadow show the texture times a shadow colour, with a ramp setting how sharp the change is. Every material uses it (toon materials on one shared ramp), so characters are lit and shadowed the same way as the set. Press Esc, then **Look**, to change the sun direction and height, shadow colour, edge position and softness, and sky colour live. Settings are remembered in the browser; **Copy settings** copies them so they can become the defaults (`LOOK_DEFAULT` in index.html).
+Fortress (James's tower defense) was developed here and merged into Austin's repo, [austinrhermann/ffa-prototype](https://github.com/austinrhermann/ffa-prototype) (pull request #8), so free for all and Fortress share one codebase. The history of this folder has the earlier versions.
