@@ -26,3 +26,7 @@ The level comes from James's render set export, turned into two files by `tools/
 - `models/Fortress_v5_col.glb` is what everything collides with, shoots at and walks on: simplified terrain, the fort exact, props as boxes, no plants, plus the closed gate as a box named `Front_Gate`. Every staircase is replaced by a smooth ramp, and the rock poking into the passage by the wall walk and the narrow doorway from the back corridor are trimmed so you can walk from the corridor up to the wall walk (see `RAMPS` and `TRIM` in the script).
 
 When the level loads, the host builds a fine walking map of every floor inside the fort from the collision file; attackers plan their paths on it.
+
+## Look
+
+Shading copies the Blender renders: a hard sun, lit surfaces show their texture colour, and surfaces turned away from the sun or in shadow show the texture times a shadow colour, with a ramp setting how sharp the change is. Every material uses it (toon materials on one shared ramp), so characters are lit and shadowed the same way as the set. Press Esc, then **Look**, to change the sun direction and height, shadow colour, edge position and softness, and sky colour live. Settings are remembered in the browser; **Copy settings** copies them so they can become the defaults (`LOOK_DEFAULT` in index.html).

@@ -85,6 +85,13 @@ body.guest .hostonly{display:none}
 body.touch #mic{bottom:calc(60px + env(safe-area-inset-bottom,0px))}
 .cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:stretch;margin:16px}
 .cards .card{margin:0}
+#lookcard{display:none}
+#overlay.looking{background:transparent;justify-content:flex-end;align-items:flex-start}
+#overlay.looking .cards>.card{display:none}
+#overlay.looking #lookcard{display:block;max-width:300px}
+#lookcard .row{display:flex;gap:8px;margin-top:8px}
+#lookcard .row button,#looklink{flex:1;padding:8px;border:1px solid rgba(238,243,234,.25);border-radius:4px;background:#1e252c;color:var(--hud);font:inherit;font-size:14px;cursor:pointer}
+#lookcard input[type=color]{height:30px;padding:0;border:0;background:none}
 #charcard{width:280px}
 #cprev{display:block;margin:4px auto 0;width:240px;height:280px;border-radius:6px;background:rgba(255,255,255,.05)}
 #play:disabled{opacity:.55;cursor:default}
@@ -207,8 +214,20 @@ body.touch .card small.tc{display:block}
   <div class="set hostonly" id="setwaves" style="display:none"><label for="swaves">Waves to survive <output id="owaves">6</output></label><input type="range" id="swaves" min="3" max="15" value="6"></div>
   <button id="play" disabled>Loading characters…</button>
   <button id="restart" class="hostonly" style="display:none">Restart game</button>
+  <button id="looklink" type="button">Look</button>
   <small class="kb">Needs a mouse and keyboard.</small>
   <small class="tc">Best in landscape.</small>
+</div>
+<div class="card" id="lookcard">
+  <h1>Look</h1>
+  <div class="set"><label for="lkaz">Sun direction <output id="olkaz"></output></label><input type="range" id="lkaz" min="0" max="360" step="1"></div>
+  <div class="set"><label for="lkel">Sun height <output id="olkel"></output></label><input type="range" id="lkel" min="5" max="85" step="1"></div>
+  <div class="set"><label for="lkshadow">Shadow colour <output id="olkshadow"></output></label><input type="color" id="lkshadow"></div>
+  <div class="set"><label for="lkedge">Light and shadow edge <output id="olkedge"></output></label><input type="range" id="lkedge" min="0.2" max="0.8" step="0.01"></div>
+  <div class="set"><label for="lksoft">Edge softness <output id="olksoft"></output></label><input type="range" id="lksoft" min="0" max="0.4" step="0.01"></div>
+  <div class="set"><label for="lksky">Sky colour <output id="olksky"></output></label><input type="color" id="lksky"></div>
+  <small>Changes show straight away and are remembered on this computer.</small>
+  <div class="row"><button type="button" id="lkreset">Reset</button><button type="button" id="lkcopy">Copy settings</button><button type="button" id="lkback">Back</button></div>
 </div>
 <div class="card" id="charcard">
   <h1 id="chartitle">Your character</h1>
@@ -254,9 +273,19 @@ scene.fog = new THREE.Fog(0x9db4c8, 35, 95);
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 300);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
-scene.add(new THREE.HemisphereLight(0xe4ecff, 0x4a5240, 0.9));
-const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-sun.position.set(25, 50, 15);
+// ---------- Look: flat sun-and-shadow shading, like the Blender renders ----------
+// Lit surfaces show their texture colour; surfaces turned away from the sun, or in its shadow, show the texture times the
+// shadow colour. A ramp sets how sharply one turns into the other. Every material uses it, characters included, so they're
+// lit and shadowed the same way as the set. Tweak it from the Look panel on the pause screen.
+const LOOK_DEFAULT = { az: 210, el: 55, shadow: '#6a7488', edge: 0.5, soft: 0.06, sky: '#9db4c8' };
+let LOOK = { ...LOOK_DEFAULT };
+try { Object.assign(LOOK, JSON.parse(localStorage.getItem('fortressLook') || '{}')); } catch (e) {}
+const RAMP = new THREE.DataTexture(new Uint8Array(256 * 4), 256, 1, THREE.RGBAFormat);
+RAMP.magFilter = RAMP.minFilter = THREE.LinearFilter; RAMP.generateMipmaps = false;
+const toonMat = params => new THREE.MeshToonMaterial({ gradientMap: RAMP, ...params });
+const shadeFill = new THREE.AmbientLight(0xffffff, 1); scene.add(shadeFill);
+const sun = new THREE.DirectionalLight(0xffffff, 1);
+const SUN_DIR = new THREE.Vector3();
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, far: 150 });
@@ -265,8 +294,23 @@ const boomLight = new THREE.PointLight(0xffaa55, 0, 18); scene.add(boomLight);
 
 const vmScene = new THREE.Scene();
 const vmCam = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 10);
-vmScene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.9));
-const vmLight = new THREE.DirectionalLight(0xffffff, 0.6); vmLight.position.set(1, 2, 1); vmScene.add(vmLight);
+const vmFill = new THREE.AmbientLight(0xffffff, 1); vmScene.add(vmFill);
+const vmLight = new THREE.DirectionalLight(0xffffff, 1); vmLight.position.set(1, 2, 1); vmScene.add(vmLight);
+// Apply the look settings: ramp, light colours, sun direction, sky
+function applyLook() {
+  const lo = LOOK.edge - LOOK.soft / 2, hi = LOOK.edge + LOOK.soft / 2;
+  for (let i = 0; i < 256; i++) { // the ramp's input is 0.5 where a surface turns side-on to the sun
+    const t = i / 255, k = hi <= lo ? (t >= LOOK.edge ? 1 : 0) : Math.min(1, Math.max(0, (t - lo) / (hi - lo))), v = Math.round(k * k * (3 - 2 * k) * 255);
+    RAMP.image.data.set([v, v, v, 255], i * 4);
+  }
+  RAMP.needsUpdate = true;
+  const sh = new THREE.Color(LOOK.shadow), lit = new THREE.Color(Math.max(0, 1 - sh.r), Math.max(0, 1 - sh.g), Math.max(0, 1 - sh.b));
+  for (const l of [shadeFill, vmFill, ...(prev ? [prev.fill] : [])]) l.color.copy(sh);
+  for (const l of [sun, vmLight, ...(prev ? [prev.sun] : [])]) l.color.copy(lit);
+  const az = LOOK.az * Math.PI / 180, el = LOOK.el * Math.PI / 180;
+  SUN_DIR.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+  scene.background.set(LOOK.sky); scene.fog.color.set(LOOK.sky);
+}
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
@@ -486,14 +530,14 @@ function gridTex() {
   return t;
 }
 const MAT = {
-  wall: new THREE.MeshLambertMaterial({ color: 0x8d949c }),
-  plat: new THREE.MeshLambertMaterial({ color: 0x69737f }),
-  stair: new THREE.MeshLambertMaterial({ color: 0x7d6e5c }),
-  crate: new THREE.MeshLambertMaterial({ color: 0xa8804a }),
-  floor: new THREE.MeshLambertMaterial({ map: gridTex() }),
-  snow: new THREE.MeshLambertMaterial({ color: 0xe8edf1 }),
-  pad: new THREE.MeshLambertMaterial({ color: 0x50555b }),
-  padMark: new THREE.MeshLambertMaterial({ color: 0xe0b52a }),
+  wall: toonMat({ color: 0x8d949c }),
+  plat: toonMat({ color: 0x69737f }),
+  stair: toonMat({ color: 0x7d6e5c }),
+  crate: toonMat({ color: 0xa8804a }),
+  floor: toonMat({ map: gridTex() }),
+  snow: toonMat({ color: 0xe8edf1 }),
+  pad: toonMat({ color: 0x50555b }),
+  padMark: toonMat({ color: 0xe0b52a }),
 };
 function boxMat(b0, b1) {
   if (b0 === F2 - SLAB) return MAT.plat;
@@ -525,7 +569,7 @@ function buildWorld(L) {
   W.meshes.length = 0; W.colliders.length = 0;
   const fog = L.fog || [35, 95]; scene.fog.near = fog[0]; scene.fog.far = fog[1];
   camera.far = L.mesh ? 400 : 300; camera.updateProjectionMatrix();
-  if (!L.mesh) { sun.position.set(25, 50, 15); sun.target.position.set(0, 0, 0); sun.target.updateMatrixWorld(); }
+  if (!L.mesh) { sun.position.copy(SUN_DIR).multiplyScalar(60); sun.target.position.set(0, 0, 0); sun.target.updateMatrixWorld(); }
   sun.shadow.bias = L.mesh ? -0.0005 : 0; sun.shadow.normalBias = L.mesh ? 0.03 : 0;
   if (L.mesh) {
     const sc = LEVEL_SCENES[L.mesh], col = LEVEL_SCENES[L.collide || L.mesh]; levelGroup.add(sc);
@@ -1071,8 +1115,8 @@ function prepScene(sc) {
     const m = o.material;
     if (m.map) m.map.encoding = THREE.LinearEncoding;
     const color = m.color.clone(); if (!m.map) color.convertLinearToSRGB();
-    o.material = new THREE.MeshLambertMaterial({ map: m.map || null, color, side: m.side, skinning: !!o.isSkinnedMesh }); o.material.name = m.name;
-    o.castShadow = true; o.receiveShadow = !o.isSkinnedMesh; o.frustumCulled = !o.isSkinnedMesh;
+    o.material = toonMat({ map: m.map || null, color, side: m.side, skinning: !!o.isSkinnedMesh }); o.material.name = m.name;
+    o.castShadow = true; o.receiveShadow = true; o.frustumCulled = !o.isSkinnedMesh;
   });
   sc.updateMatrixWorld(true); return sc;
 }
@@ -1098,7 +1142,7 @@ const WEAPONS = {
 const PROPS = {};
 function makeShotgun() {
   const g = new THREE.Group();
-  const metal = new THREE.MeshLambertMaterial({ color: 0x3a3d42 }), wood = new THREE.MeshLambertMaterial({ color: 0x7a4a26 });
+  const metal = toonMat({ color: 0x3a3d42 }), wood = toonMat({ color: 0x7a4a26 });
   const add = (geo, mat, x, y, z, rx) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); if (rx) o.rotation.x = rx; o.castShadow = true; g.add(o); return o; };
   for (const x of [-0.023, 0.023]) add(new THREE.CylinderGeometry(0.021, 0.021, 0.62, 12).rotateX(Math.PI / 2), metal, x, 0.02, -0.33);
   add(new THREE.BoxGeometry(0.075, 0.07, 0.16), metal, 0, 0.005, 0.03);
@@ -1588,7 +1632,7 @@ function setGate(open, breach) {
 }
 // The front gate: two heavy doors hinged at the sides of the passage that swing into the courtyard (blown wide when broken)
 let DOORS = null;
-const DOOR_WOOD = new THREE.MeshLambertMaterial({ color: 0x6b4a2e }), DOOR_IRON = new THREE.MeshLambertMaterial({ color: 0x2c3034 });
+const DOOR_WOOD = toonMat({ color: 0x6b4a2e }), DOOR_IRON = toonMat({ color: 0x2c3034 });
 function buildDoors(d) {
   const g = new THREE.Group(), w = (d.x1 - d.x0) / 2, h = d.y1 - d.y0, leaves = [];
   for (const side of [1, -1]) {
@@ -1730,7 +1774,7 @@ function knifeAttack(att) {
 
 // Grenades
 const nades = [];
-const nadeGeo = new THREE.SphereGeometry(0.09, 10, 8), nadeMat = new THREE.MeshLambertMaterial({ color: 0x3d4a2a });
+const nadeGeo = new THREE.SphereGeometry(0.09, 10, 8), nadeMat = toonMat({ color: 0x3d4a2a });
 function throwNade(owner, origin, vel, fuse = NADE_FUSE) {
   if (NET.role === 'guest') { if (owner === P && NET.conn && NET.conn.open) NET.conn.send({ t: 'nade', o: arr(origin), v: arr(vel), f: fuse }); return; }
   const m = new THREE.Mesh(nadeGeo, nadeMat); m.castShadow = true; m.position.copy(origin); scene.add(m);
@@ -1764,7 +1808,7 @@ function updateGas(dt) {
   for (const g of GASCANS) if (!g.alive) { g.t -= dt; if (g.t <= 0) { g.alive = true; g.o.visible = true; } } for (let i = pendingGas.length - 1; i >= 0; i--) { const q = pendingGas[i]; q.t -= dt; if (q.t <= 0) { pendingGas.splice(i, 1); shootGas(q.g, q.owner); } } }
 // Health pickups: each pile of white bottles or yellow crab cans restores full health, then comes back after a while
 const HEALS = [];
-const HEAL_MAT = new THREE.MeshLambertMaterial({ color: 0xf2f0ea }), CROSS_MAT = new THREE.MeshLambertMaterial({ color: 0xc8302f });
+const HEAL_MAT = toonMat({ color: 0xf2f0ea }), CROSS_MAT = toonMat({ color: 0xc8302f });
 function registerHeal(objs, pos) { objs = objs.filter(Boolean); if (objs.length) HEALS.push({ objs, pos, active: true, t: 0 }); }
 function setHeal(h, on) { h.active = on; h.objs.forEach(o => { o.visible = on; }); }
 function updateHeals(dt) {
@@ -1798,8 +1842,8 @@ function updateNades(dt) {
 
 // Ammo boxes
 const ammoBoxes = [];
-const AMMO_MAT = new THREE.MeshLambertMaterial({ color: 0x4f5b34 }), BAND_MAT = new THREE.MeshLambertMaterial({ color: 0xe8c547 });
-const NADE_MAT = new THREE.MeshLambertMaterial({ color: 0x33402a }), NBAND_MAT = new THREE.MeshLambertMaterial({ color: 0xc8402f });
+const AMMO_MAT = toonMat({ color: 0x4f5b34 }), BAND_MAT = toonMat({ color: 0xe8c547 });
+const NADE_MAT = toonMat({ color: 0x33402a }), NBAND_MAT = toonMat({ color: 0xc8402f });
 function buildAmmoBoxes() {
   ammoBoxes.forEach(a => scene.remove(a.mesh)); ammoBoxes.length = 0;
   for (const { pos: p, cell, nade } of AMMO_SPOTS) {
@@ -2484,8 +2528,8 @@ function buildViewmodels() {
 vmScene.add(vm);
 const knifeVM = new THREE.Group();
 {
-  const h = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.035, 0.12), new THREE.MeshLambertMaterial({ color: 0x222222 }));
-  const bl = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.04, 0.2), new THREE.MeshLambertMaterial({ color: 0xc9ced4 }));
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.035, 0.12), toonMat({ color: 0x222222 }));
+  const bl = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.04, 0.2), toonMat({ color: 0xc9ced4 }));
   bl.position.z = -0.16; knifeVM.add(h, bl);
 }
 knifeVM.visible = false; vmScene.add(knifeVM);
@@ -2702,14 +2746,14 @@ tl.addEventListener('touchcancel', touchEnd);
 
 // ---------- Character preview ----------
 let prev = null;
+applyLook();
 function initPreview() {
   const r = new THREE.WebGLRenderer({ canvas: $('cprev'), antialias: true, alpha: true });
   r.setPixelRatio(Math.min(devicePixelRatio, 2)); r.setSize(240, 280, false);
   const sc = new THREE.Scene();
-  sc.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.0));
-  const dl = new THREE.DirectionalLight(0xffffff, 0.6); dl.position.set(1, 2, 2); sc.add(dl);
+  const pf = new THREE.AmbientLight(0xffffff, 1), dl = new THREE.DirectionalLight(0xffffff, 1); dl.position.set(1, 2, 2); sc.add(pf, dl);
   const cam = new THREE.PerspectiveCamera(30, 240 / 280, 0.05, 20);
-  prev = { r, sc, cam, rig: null };
+  prev = { r, sc, cam, rig: null, fill: pf, sun: dl }; applyLook();
   setPreview(ROLES[NET.role === 'host' ? hostPick : 'apprentice'].model);
   $('schar').onchange = e => setPreview(+e.target.value);
 }
@@ -2731,6 +2775,19 @@ function renderPreview(dt) {
 // ---------- Round results ----------
 $('slimit').oninput = e => $('olimit').textContent = e.target.value;
 $('restart').onclick = () => $('next').onclick();
+// Look panel: opens over the paused game with the scene showing through
+const LOOK_FIELDS = { lkaz: ['az', v => v + '°'], lkel: ['el', v => v + '°'], lkshadow: ['shadow', v => v], lkedge: ['edge', v => (+v).toFixed(2)], lksoft: ['soft', v => (+v).toFixed(2)], lksky: ['sky', v => v] };
+function showLook() {
+  for (const [id, [k, fmt]] of Object.entries(LOOK_FIELDS)) { $(id).value = LOOK[k]; $('o' + id).textContent = fmt(LOOK[k]); }
+}
+for (const [id, [k, fmt]] of Object.entries(LOOK_FIELDS)) $(id).oninput = e => {
+  const v = e.target.type === 'color' ? e.target.value : +e.target.value; LOOK[k] = v; $('o' + id).textContent = fmt(v);
+  applyLook(); try { localStorage.setItem('fortressLook', JSON.stringify(LOOK)); } catch (err) {}
+};
+$('looklink').onclick = () => { showLook(); $('overlay').classList.add('looking'); };
+$('lkback').onclick = () => $('overlay').classList.remove('looking');
+$('lkreset').onclick = () => { LOOK = { ...LOOK_DEFAULT }; try { localStorage.removeItem('fortressLook'); } catch (e) {} applyLook(); showLook(); };
+$('lkcopy').onclick = () => { const t = JSON.stringify(LOOK); navigator.clipboard.writeText(t).then(() => note('Look settings copied', 1.5)).catch(() => prompt('Look settings', t)); };
 $('next').onclick = () => {
   initAudio();
   KILL_LIMIT = +$('slimit').value;
@@ -2851,7 +2908,7 @@ const CANNON = { reload: 10, turn: 0.9, minPitch: -0.6, maxPitch: 0.4, maxYaw: 1
 const CPU = { name: 'Computer', role: 'computer', id: 'cpu', kills: 0, deaths: 0 };
 let CN = null;
 const shells = [];
-const CN_METAL = new THREE.MeshLambertMaterial({ color: 0x3b4148 }), CN_DARK = new THREE.MeshLambertMaterial({ color: 0x23272b });
+const CN_METAL = toonMat({ color: 0x3b4148 }), CN_DARK = toonMat({ color: 0x23272b });
 const shellGeo = new THREE.SphereGeometry(0.16, 10, 8), shellMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });
 function buildCannon(at) {
   const g = new THREE.Group(), pivotY = 1.35; g.position.copy(at); propGroup.add(g);
@@ -3359,7 +3416,7 @@ function loop(now) {
   updateVM(dt);
   updateHUD(dt);
   updateChatbox();
-  if (TG) { sun.position.set(camera.position.x + 25, camera.position.y + 50, camera.position.z + 15); sun.target.position.copy(camera.position); sun.target.updateMatrixWorld(); }
+  if (TG) { sun.position.copy(camera.position).addScaledVector(SUN_DIR, 60); sun.target.position.copy(camera.position); sun.target.updateMatrixWorld(); }
   renderer.clear();
   renderer.render(scene, camera);
   renderer.clearDepth();
