@@ -10,6 +10,7 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151614;--panel:#1e201d;--fg:#ecebe6;--muted:#9a9993;--line:#2e302c;--accent:#5cc092;--accent-fg:#0d1a13;--tile:#2a2c28;--danger:#e06c6c;--danger-fg:#1a0d0d}}
 :root[data-theme="dark"]{--bg:#151614;--panel:#1e201d;--fg:#ecebe6;--muted:#9a9993;--line:#2e302c;--accent:#5cc092;--accent-fg:#0d1a13;--tile:#2a2c28;--danger:#e06c6c;--danger-fg:#1a0d0d}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}
@@ -135,7 +136,10 @@ input[type=text]:focus{border-color:var(--accent)}
       <div class="meter" title="Mic level"><i id="meter"></i></div>
     </div>
 
-    <div class="joinrow"><button class="btn primary big" id="join" disabled>Join</button></div>
+    <div class="joinrow">
+      <button class="btn primary big" id="join" disabled>Join</button>
+      <button class="btn primary big" id="allow" hidden>Allow microphone</button>
+    </div>
     <p class="note" id="lobbyNote" role="status"></p>
 
     <div class="field">
@@ -257,25 +261,77 @@ function showLobby(msg) {
 }
 
 // ---------- Camera and mic ----------
-async function startMedia() {
-  if (local) { $('join').disabled = false; return; }
-  $('join').disabled = true;
+// If anything goes wrong, the page stays put: "Allow microphone" asks again, and a change in the
+// browser's site settings is picked up automatically, so nobody has to reload.
+let starting = null;
+function startMedia() {
+  if (local) { allowMode(false); return Promise.resolve(); }
+  return starting || (starting = getMedia().finally(() => { starting = null; }));
+}
+async function getMedia() {
+  $('join').disabled = true; $('allow').disabled = true;
+  if (!TEST && !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+    setNote("This browser can't do calls. Try a recent Chrome, Safari, Firefox or Edge.");
+    allowMode(true); return;
+  }
+  let camErr = null;
   try {
     local = TEST ? fakeStream() : await navigator.mediaDevices.getUserMedia({ audio: AUDIO, video: VIDEO });
-  } catch {
-    try {
-      local = await navigator.mediaDevices.getUserMedia({ audio: AUDIO });
-      setNote("No camera found (or it's blocked), so you'll join with voice only.", true);
-    } catch {
-      setNote("Couldn't get your microphone. Allow mic access for this site in your browser, then reload.");
-      return;
-    }
+  } catch (e) {
+    camErr = e;
+    try { local = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); }
+    catch (e2) { setNote(await mediaHelp(e2, 'microphone')); allowMode(true); return; }
   }
   $('mirrorVideo').srcObject = local;
   localAn = analyse(local);
-  applyTracks(); syncButtons();
-  $('join').disabled = false;
+  applyTracks(); syncButtons(); allowMode(false);
+  setNote(camErr ? (await mediaHelp(camErr, 'camera')) + " You can still join with voice." : '', true);
 }
+// Camera was missing or blocked when the mic started: try again without touching the mic
+async function addCamera() {
+  try {
+    const v = (await navigator.mediaDevices.getUserMedia({ video: VIDEO })).getVideoTracks()[0];
+    local.addTrack(v); camOn = true; store.set('meet-cam', '1');
+    $('mirrorVideo').srcObject = null; $('mirrorVideo').srcObject = local;
+    applyTracks(); syncButtons(); setNote('', true);
+  } catch (e) { setNote((await mediaHelp(e, 'camera')) + " You can still join with voice.", true); }
+}
+async function mediaHelp(e, what) {
+  const name = e && e.name;
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return `No ${what} found. Plug one in, then try again.`;
+  if (name === 'NotReadableError' || name === 'AbortError') return `Your ${what} is busy, probably in another app or tab (Zoom, FaceTime, another call). Close that, then try again.`;
+  if (name !== 'NotAllowedError' && name !== 'SecurityError') return `Couldn't start your ${what} (${name || 'unknown error'}). Try again.`;
+  if (await permState(what) === 'denied') {
+    const where = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
+      ? `In the Safari menu, open Settings for ${location.hostname}`
+      : 'Click the icon at the left end of the address bar';
+    return `Your browser is blocking the ${what} for this page. ${where} and set ${what === 'camera' ? 'Camera' : 'Microphone and Camera'} to Allow. This page will notice on its own.`;
+  }
+  return `The ${what} was blocked. If no prompt appeared, your computer may be blocking the browser: on a Mac, open System Settings › Privacy & Security › ${what === 'camera' ? 'Camera' : 'Microphone'} and turn your browser on (it may ask to restart). Then try again.`;
+}
+// 'granted' | 'denied' | 'prompt' | null when the browser can't say (Firefox)
+async function permState(what) {
+  try { return (await navigator.permissions.query({ name: what })).state; } catch { return null; }
+}
+// Retry by itself when someone flips the permission in the browser's site settings
+for (const what of ['microphone', 'camera']) {
+  try {
+    navigator.permissions.query({ name: what }).then(s => {
+      s.onchange = () => {
+        if (s.state === 'denied' || inCall || !$('lobby').classList.contains('on')) return;
+        if (!local) startMedia();
+        else if (what === 'camera' && !hasCam()) addCamera();
+      };
+    }).catch(() => {});
+  } catch {}
+}
+// Before media works, the big button asks for access instead of joining
+function allowMode(on) {
+  $('allow').hidden = !on; $('join').hidden = on;
+  $('allow').disabled = false; $('join').disabled = on;
+  syncButtons();
+}
+$('allow').onclick = () => startMedia();
 function stopMedia() {
   if (!local) return;
   for (const t of local.getTracks()) t.stop();
@@ -289,20 +345,30 @@ function applyTracks() {
   for (const t of local.getVideoTracks()) t.enabled = camOn;
 }
 function syncButtons() {
+  const mic = micOn && !!local;
   for (const b of [$('lobbyMic'), $('callMic')]) {
-    b.innerHTML = (micOn ? ICON.mic : ICON.micOff) + `<span class="lbl">${micOn ? 'Mic on' : 'Muted'}</span>`;
-    b.classList.toggle('off', !micOn); b.setAttribute('aria-pressed', String(!micOn));
+    b.innerHTML = (mic ? ICON.mic : ICON.micOff) + `<span class="lbl">${!local ? 'Allow mic' : micOn ? 'Mic on' : 'Muted'}</span>`;
+    b.classList.toggle('off', !mic); b.setAttribute('aria-pressed', String(!mic));
   }
   const cam = camOn && hasCam();
   for (const b of [$('lobbyCam'), $('callCam')]) {
-    b.innerHTML = (cam ? ICON.cam : ICON.camOff) + `<span class="lbl">${!hasCam() && local ? 'No camera' : cam ? 'Camera on' : 'Camera off'}</span>`;
-    b.classList.toggle('off', !cam); b.disabled = !!local && !hasCam();
+    b.innerHTML = (cam ? ICON.cam : ICON.camOff) + `<span class="lbl">${!local ? 'Allow camera' : !hasCam() ? 'Turn on camera' : cam ? 'Camera on' : 'Camera off'}</span>`;
+    b.classList.toggle('off', !cam);
   }
+  // Mid-call there's no video connection to add a camera to, so that one only works before joining
+  $('callCam').disabled = !hasCam();
   $('mirror').classList.toggle('nocam', !cam);
   $('mirrorInitial').textContent = initial($('name').value || myName);
 }
-function toggleMic() { micOn = !micOn; store.set('meet-mic', micOn ? '1' : '0'); applyTracks(); syncButtons(); sendState(); }
-function toggleCam() { camOn = !camOn; store.set('meet-cam', camOn ? '1' : '0'); applyTracks(); syncButtons(); sendState(); }
+function toggleMic() {
+  if (!local) return startMedia();
+  micOn = !micOn; store.set('meet-mic', micOn ? '1' : '0'); applyTracks(); syncButtons(); sendState();
+}
+function toggleCam() {
+  if (!local) return startMedia();
+  if (!hasCam()) return inCall ? null : addCamera();
+  camOn = !camOn; store.set('meet-cam', camOn ? '1' : '0'); applyTracks(); syncButtons(); sendState();
+}
 $('lobbyMic').onclick = $('callMic').onclick = toggleMic;
 $('lobbyCam').onclick = $('callCam').onclick = toggleCam;
 $('name').oninput = () => { $('mirrorInitial').textContent = initial($('name').value); };
