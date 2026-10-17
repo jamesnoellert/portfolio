@@ -10,114 +10,77 @@ if (location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(
 </script>
 <meta name="description" content="A small, private voice and video call for up to 4 people.">
 <style>
-:root{--bg:#f6f5f2;--panel:#fff;--fg:#1d1d1b;--muted:#6b6a66;--line:#e2e0da;--accent:#2f7d5b;--accent-fg:#fff;--tile:#e4e2dc;--danger:#b33a3a;--danger-fg:#fff;--tile-w:136px;--focus-w:168px}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151614;--panel:#1e201d;--fg:#ecebe6;--muted:#9a9993;--line:#2e302c;--accent:#5cc092;--accent-fg:#0d1a13;--tile:#2a2c28;--danger:#e06c6c;--danger-fg:#1a0d0d}}
-:root[data-theme="dark"]{--bg:#151614;--panel:#1e201d;--fg:#ecebe6;--muted:#9a9993;--line:#2e302c;--accent:#5cc092;--accent-fg:#0d1a13;--tile:#2a2c28;--danger:#e06c6c;--danger-fg:#1a0d0d}
+/* Matches jamesnoellert.com: Arial 20px, black on white, one plain column. Buttons are underlined words. */
+:root{--tile-w:136px;--focus-w:168px}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0;height:100%}
-body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
-button,input{font:inherit;color:inherit}
-a{color:var(--accent)}
-.screen{display:none;min-height:100dvh;flex-direction:column;align-items:center;padding:0 16px env(safe-area-inset-bottom)}
+body{background:#fff;color:#000;font-family:Arial,sans-serif;font-size:20px;letter-spacing:.04em}
+button,input{font:inherit;letter-spacing:inherit;color:inherit}
+p{margin:12px 0}
+.screen{display:none;min-height:100dvh;flex-direction:column;align-items:center;padding:0 24px env(safe-area-inset-bottom)}
 .screen.on{display:flex}
-.col{width:100%;max-width:520px}
-h1{font-size:28px;line-height:1.2;margin:0 0 12px;letter-spacing:-.01em}
-p{margin:0 0 12px}
-.muted{color:var(--muted)}
-.small{font-size:13px}
+.col{width:100%;max-width:600px}
+.quiet{color:#777}
 
-/* Buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel);cursor:pointer;white-space:nowrap}
-.btn:hover{border-color:var(--muted)}
-.btn:disabled{opacity:.5;cursor:default}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
-.btn.danger{background:var(--danger);border-color:var(--danger);color:var(--danger-fg);font-weight:600}
-.btn.off{background:var(--fg);border-color:var(--fg);color:var(--bg)}
-.btn.big{min-height:50px;padding:0 24px;font-size:16px}
-.btn svg{width:18px;height:18px;flex:none}
-.btn:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Links and buttons look the same: underlined text */
+a,.link{color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
+.link{background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left}
+a:hover,.link:hover,a:focus-visible,.link:focus-visible{text-decoration-thickness:2px;outline:none}
+.link:disabled{opacity:.35;cursor:default;text-decoration-thickness:1px}
+.links{display:flex;flex-wrap:wrap;align-items:center;gap:8px 28px}
+
+/* Text fields are a line to write on */
+input[type=text]{width:100%;border:0;border-bottom:1px solid #000;border-radius:0;padding:4px 0;background:none;outline:none}
+input[type=text]:focus{box-shadow:inset 0 -1px 0 #000}
+input::placeholder{color:#999}
 
 /* Welcome */
-#welcome .col{margin:auto 0;padding:48px 0}
-#welcome ul{padding:0;margin:20px 0 28px;list-style:none;display:grid;gap:12px}
-#welcome li{padding-left:22px;position:relative}
-#welcome li::before{content:"";position:absolute;left:4px;top:.6em;width:7px;height:7px;border-radius:50%;background:var(--accent)}
-#welcome .foot{margin-top:28px}
 
 /* Tiles sit at the very top, centred under the webcam */
 .stage{display:flex;justify-content:center;align-items:flex-start;gap:8px;padding-top:max(10px,env(safe-area-inset-top));min-height:calc(var(--focus-w) * .75 + 10px);width:100%}
-.tile{position:relative;flex:0 1 var(--tile-w);min-width:0;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--tile);transition:flex-basis .25s ease,box-shadow .15s ease}
+.tile{position:relative;flex:0 1 var(--tile-w);min-width:0;aspect-ratio:4/3;overflow:hidden;background:#eee;transition:flex-basis .25s ease,box-shadow .15s ease}
 .tile.focus{flex-basis:var(--focus-w)}
-.tile.speaking{box-shadow:0 0 0 3px var(--accent)}
+.tile.speaking{box-shadow:0 0 0 2px #000}
 .tile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 .tile.mirror video{transform:scaleX(-1)}
-.tile .ph{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:var(--tile)}
+.tile .ph{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:28px}
 .tile.nocam .ph{display:flex}
 .tile.nocam video{opacity:0}
-.ph span{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-fg);font-weight:600;font-size:18px}
-.tile .label{position:absolute;left:6px;bottom:6px;right:6px;display:flex;align-items:center;gap:4px;font-size:12px;line-height:1;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
-.tile.nocam .label{color:var(--fg);text-shadow:none}
-.tile .label b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tile .label svg{width:14px;height:14px;flex:none;display:none}
-.tile.mute .label svg{display:block}
-.waiting{align-self:center;text-align:center;color:var(--muted);font-size:14px;padding:16px 8px}
+.tile .label{position:absolute;left:6px;bottom:6px;right:6px;font-size:12px;line-height:1.2;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.nocam .label{color:#000;text-shadow:none}
+.tile .label b{font-weight:normal}
+.tile .m{display:none}
+.tile.mute .m{display:inline}
+.waiting{align-self:center;text-align:center;color:#777}
 
 /* Lobby */
-#lobby .col{padding:20px 0 40px}
-.field{display:grid;gap:6px;margin:16px 0}
-.field label{font-size:13px;color:var(--muted)}
-input[type=text]{width:100%;min-height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);outline:none}
-input[type=text]:focus{border-color:var(--accent)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.meter{flex:1;min-width:80px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
-.meter i{display:block;height:100%;width:0;background:var(--accent);transition:width .08s linear}
-.invite{display:flex;gap:8px;margin-top:6px}
-.invite input{flex:1;min-width:0;font-size:13px;color:var(--muted)}
-.note{min-height:1.5em;margin:12px 0 0;font-size:14px;color:var(--danger)}
-.note.ok{color:var(--muted)}
-.joinrow{margin-top:20px}
-.joinrow .btn{width:100%}
+#lobby .col{padding:12px 0 40px}
+#lobby .links{margin:12px 0}
+.meter{flex:1;min-width:60px;max-width:160px;height:2px;background:#ddd;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:#000;transition:width .08s linear}
+.note:empty{display:none}
+#inviteLobby{overflow-wrap:anywhere}
 
 /* Call */
-#call{height:100dvh;padding-bottom:max(12px,env(safe-area-inset-bottom))}
-#call .col{flex:1;min-height:0;display:flex;flex-direction:column;padding-top:12px}
-.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px}
-.chat{flex:1;min-height:180px;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
-.chat header{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
-.chat header .btn{min-height:30px;padding:0 10px;font-size:13px}
-.log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-.log:empty::before{content:"Share links or jot notes here. Nothing is saved unless you click Save.";color:var(--muted);font-size:14px}
+#call{height:100dvh;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+#call .col{flex:1;min-height:0;display:flex;flex-direction:column}
+#call .controls{justify-content:center;margin:16px 0}
+.chat{flex:1;min-height:180px;display:flex;flex-direction:column}
+.chat header{display:flex;justify-content:space-between;gap:16px;padding-bottom:8px}
+.log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:8px 0}
+.log:empty::before{content:"Share links or jot notes here. Nothing is saved unless you click Save as text.";color:#777}
 .msg{white-space:pre-wrap;overflow-wrap:anywhere}
-.msg b{font-weight:600;margin-right:6px}
-.msg.me b{color:var(--accent)}
-.msg time{color:var(--muted);font-size:12px;margin-left:6px}
-.msg.sys{color:var(--muted);font-size:13px;font-style:italic}
-.chat form{display:flex;gap:8px;padding:8px;border-top:1px solid var(--line)}
+.msg b{font-weight:normal;font-style:italic;margin-right:8px}
+.msg time{color:#999;font-size:14px;margin-left:8px}
+.msg.sys{color:#777;font-style:italic}
+.chat form{display:flex;align-items:baseline;gap:16px;padding-top:8px}
 .chat form input{flex:1;min-width:0}
-
-@media (max-width:420px){.btn .lbl{display:none}.btn{padding:0 12px}.controls .btn.danger .lbl{display:inline}}
 </style>
 </head>
 <body>
 
-<!-- 1. Welcome -->
-<section class="screen" id="welcome">
-  <div class="col">
-    <h1>Meet</h1>
-    <p class="muted">A small, simple call for up to four people. No account, no app, nothing to install.</p>
-    <ul>
-      <li><b>Voice first.</b> Video is there if you want it, kept small.</li>
-      <li><b>Eye contact.</b> Faces sit at the very top of your screen, right under your camera, so when you look at someone it looks like you're looking at them.</li>
-      <li><b>Private.</b> Audio, video and chat go straight between your browsers, encrypted. Nothing is recorded or stored. Close the tab and it's gone.</li>
-      <li><b>A chat for links and notes.</b> Save it as a text file before you leave if you want to keep it.</li>
-    </ul>
-    <button class="btn primary big" id="newMeeting">New meeting</button>
-    <p class="foot small muted">A small public server (<a href="https://peerjs.com" target="_blank" rel="noopener noreferrer">PeerJS</a>) only introduces the browsers to each other. It never sees or hears the call.</p>
-  </div>
-</section>
-
-<!-- 2. Lobby: the mirror -->
+<!-- 1. First page: intro, the mirror, and New meeting (or Join, from an invite link) -->
 <section class="screen" id="lobby">
   <div class="stage">
     <div class="tile mirror focus" id="mirror">
@@ -126,54 +89,44 @@ input[type=text]:focus{border-color:var(--accent)}
     </div>
   </div>
   <div class="col">
-    <h1 id="lobbyTitle">Quick look in the mirror</h1>
-    <p class="muted">Only you can see this. Once you join, your own video is hidden so you can focus on everyone else.</p>
-
-    <div class="field">
-      <label for="name">Your name</label>
-      <input type="text" id="name" maxlength="32" placeholder="What should people call you?" autocomplete="name">
-    </div>
-
-    <div class="row">
-      <button class="btn" id="lobbyMic"></button>
-      <button class="btn" id="lobbyCam"></button>
+    <p id="lobbyTitle" hidden></p>
+    <p>This is a "vibe-coded" video call app, using claude's opus 5.5.</p>
+    <p>Limit is 4 people, your face is not shown to you unless you check the "mirror", and it has everyone small and up top, closer to your webcam (probably) so it feels more like eye contact.</p>
+    <p>Still very new, so please send feedback to <a href="mailto:jamesnoellert@gmail.com">jamesnoellert@gmail.com</a></p>
+    <p><input type="text" id="name" maxlength="32" placeholder="Your name" aria-label="Your name" autocomplete="name"></p>
+    <div class="links">
+      <button class="link" id="lobbyMic"></button>
+      <button class="link" id="lobbyCam"></button>
       <div class="meter" title="Mic level"><i id="meter"></i></div>
     </div>
-
-    <div class="joinrow">
-      <button class="btn primary big" id="join" disabled>Join</button>
-      <button class="btn primary big" id="allow" hidden>Allow microphone</button>
-    </div>
+    <p>
+      <button class="link" id="newMeeting">New meeting</button>
+      <button class="link" id="join" hidden>Join</button>
+      <button class="link" id="allow" hidden>Allow microphone</button>
+    </p>
     <p class="note" id="lobbyNote" role="status"></p>
-
-    <div class="field">
-      <label for="inviteLobby">Invite link (send this to the others)</label>
-      <div class="invite">
-        <input type="text" id="inviteLobby" readonly>
-        <button class="btn copy" data-target="inviteLobby">Copy</button>
-      </div>
-    </div>
+    <p id="invite" hidden>Invite link: <span id="inviteLobby"></span> <button class="link copy">Copy</button></p>
   </div>
 </section>
 
-<!-- 3. Call -->
+<!-- 2. Call -->
 <section class="screen" id="call">
   <div class="stage" id="stage">
-    <div class="waiting" id="waiting">Waiting for others to join…</div>
+    <p class="waiting" id="waiting">Waiting for others to join…</p>
   </div>
   <div class="col">
-    <div class="controls">
-      <button class="btn" id="callMic"></button>
-      <button class="btn" id="callCam"></button>
-      <button class="btn copy" id="callInvite"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg><span class="lbl">Copy invite</span></button>
-      <button class="btn danger" id="leave"><span class="lbl">Leave</span></button>
+    <div class="links controls">
+      <button class="link" id="callMic"></button>
+      <button class="link" id="callCam"></button>
+      <button class="link copy" id="callInvite">Copy invite</button>
+      <button class="link" id="leave">Leave</button>
     </div>
     <div class="chat">
-      <header><span id="people">Just you</span><button class="btn" id="save">Save as text</button></header>
+      <header><span id="people">Just you</span><button class="link" id="save">Save as text</button></header>
       <div class="log" id="log" aria-live="polite"></div>
       <form id="chatForm" autocomplete="off">
-        <input type="text" id="chatIn" maxlength="2000" placeholder="Message or note (Enter to send)" aria-label="Chat message" spellcheck="true">
-        <button class="btn primary" type="submit">Send</button>
+        <input type="text" id="chatIn" maxlength="2000" placeholder="Message or note" aria-label="Chat message" spellcheck="true">
+        <button class="link" type="submit">Send</button>
       </form>
     </div>
   </div>
@@ -183,7 +136,7 @@ input[type=text]:focus{border-color:var(--accent)}
   <div class="tile">
     <video autoplay playsinline></video>
     <div class="ph"><span></span></div>
-    <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.9-.7"/><path d="M19 11a7 7 0 0 1-1.2 3.9M5 11a7 7 0 0 0 11.3 5.5M12 18v3M3 3l18 18"/></svg><b></b></div>
+    <div class="label"><b></b><span class="m"> (muted)</span></div>
   </div>
 </template>
 
@@ -204,13 +157,6 @@ const $ = id => document.getElementById(id);
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
-};
-
-const ICON = {
-  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
-  micOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.9-.7"/><path d="M19 11a7 7 0 0 1-1.2 3.9M5 11a7 7 0 0 0 11.3 5.5M12 18v3M3 3l18 18"/></svg>',
-  cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>',
-  camOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1M10 6h5a1 1 0 0 1 1 1v3l5-3v10M3 3l18 18"/></svg>',
 };
 
 let room = null, local = null, peer = null, slot = 0, inCall = false, focusId = null;
@@ -248,20 +194,21 @@ function newRoomId() {
 function route() {
   if (inCall) return;
   const h = location.hash.slice(1).toLowerCase();
-  if (ROOM_RE.test(h)) { room = h; showLobby(); }
-  else { room = null; stopMedia(); show('welcome'); }
+  // From an invite link the mirror starts right away; on the bare page it waits for a click
+  if (ROOM_RE.test(h)) { room = h; showLobby(); startMedia(); }
+  else { room = null; showLobby(); }
 }
 window.addEventListener('hashchange', route);
 
-$('newMeeting').onclick = () => { room = newRoomId(); history.pushState(null, '', '#' + room); $('lobbyTitle').textContent = 'Quick look in the mirror'; showLobby(); };
+$('newMeeting').onclick = () => { room = newRoomId(); history.pushState(null, '', '#' + room); showLobby(); startMedia(); };
 
 function showLobby(msg) {
   show('lobby');
-  $('inviteLobby').value = inviteLink();
+  if (room) $('inviteLobby').textContent = inviteLink();
   $('name').value = myName;
-  setNote(msg || '', true);
-  syncButtons();
-  startMedia();
+  $('lobbyTitle').textContent = msg || ''; $('lobbyTitle').hidden = !msg;
+  setNote('', true);
+  syncActions();
 }
 
 // ---------- Camera and mic ----------
@@ -269,7 +216,7 @@ function showLobby(msg) {
 // browser's site settings is picked up automatically, so nobody has to reload.
 let starting = null;
 function startMedia() {
-  if (local) { allowMode(false); return Promise.resolve(); }
+  if (local) { syncActions(); return Promise.resolve(); }
   return starting || (starting = getMedia().finally(() => { starting = null; }));
 }
 async function getMedia() {
@@ -278,7 +225,7 @@ async function getMedia() {
     setNote(window.isSecureContext === false
       ? 'The camera and mic only work on a secure page. Open this link with https:// at the start.'
       : "This browser can't do calls. Try a recent Chrome, Safari, Firefox or Edge.");
-    allowMode(true); return;
+    syncActions(); return;
   }
   let camErr = null;
   try {
@@ -286,11 +233,11 @@ async function getMedia() {
   } catch (e) {
     camErr = e;
     try { local = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); }
-    catch (e2) { setNote(await mediaHelp(e2, 'microphone')); allowMode(true); return; }
+    catch (e2) { setNote(await mediaHelp(e2, 'microphone')); syncActions(); return; }
   }
   $('mirrorVideo').srcObject = local;
   localAn = analyse(local);
-  applyTracks(); syncButtons(); allowMode(false);
+  applyTracks(); syncActions();
   setNote(camErr ? (await mediaHelp(camErr, 'camera')) + " You can still join with voice." : '', true);
 }
 // Camera was missing or blocked when the mic started: try again without touching the mic
@@ -331,10 +278,12 @@ for (const what of ['microphone', 'camera']) {
     }).catch(() => {});
   } catch {}
 }
-// Before media works, the big button asks for access instead of joining
-function allowMode(on) {
-  $('allow').hidden = !on; $('join').hidden = on;
-  $('allow').disabled = false; $('join').disabled = on;
+// One action at a time: New meeting (no link yet), Allow microphone (link but no mic), or Join
+function syncActions() {
+  $('newMeeting').hidden = !!room;
+  $('allow').hidden = !room || !!local; $('allow').disabled = false;
+  $('join').hidden = !room || !local; $('join').disabled = false;
+  $('invite').hidden = !room;
   syncButtons();
 }
 $('allow').onclick = () => startMedia();
@@ -353,13 +302,12 @@ function applyTracks() {
 function syncButtons() {
   const mic = micOn && !!local;
   for (const b of [$('lobbyMic'), $('callMic')]) {
-    b.innerHTML = (mic ? ICON.mic : ICON.micOff) + `<span class="lbl">${!local ? 'Allow mic' : micOn ? 'Mic on' : 'Muted'}</span>`;
-    b.classList.toggle('off', !mic); b.setAttribute('aria-pressed', String(!mic));
+    b.textContent = !local ? 'Allow mic' : micOn ? 'Mute' : 'Unmute (you are muted)';
+    b.setAttribute('aria-pressed', String(!mic));
   }
   const cam = camOn && hasCam();
   for (const b of [$('lobbyCam'), $('callCam')]) {
-    b.innerHTML = (cam ? ICON.cam : ICON.camOff) + `<span class="lbl">${!local ? 'Allow camera' : !hasCam() ? 'Turn on camera' : cam ? 'Camera on' : 'Camera off'}</span>`;
-    b.classList.toggle('off', !cam);
+    b.textContent = !local ? 'Allow camera' : !hasCam() ? 'Turn on camera' : cam ? 'Turn camera off' : 'Turn camera on';
   }
   // Mid-call there's no video connection to add a camera to, so that one only works before joining
   $('callCam').disabled = !hasCam();
@@ -640,8 +588,8 @@ $('save').onclick = () => {
 async function copy(text, btn) {
   try { await navigator.clipboard.writeText(text); }
   catch { const i = document.createElement('input'); i.value = text; document.body.append(i); i.select(); document.execCommand('copy'); i.remove(); }
-  const lbl = btn.querySelector('.lbl') || btn, was = lbl.textContent;
-  lbl.textContent = 'Copied'; setTimeout(() => { lbl.textContent = was; }, 1500);
+  const was = btn.textContent;
+  btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = was; }, 1500);
 }
 $('callInvite').onclick = e => copy(inviteLink(), e.currentTarget);
 document.querySelector('#lobby .copy').onclick = e => copy(inviteLink(), e.currentTarget);
@@ -656,8 +604,7 @@ function leave() {
   // Let the goodbye go out before closing everything
   setTimeout(() => { for (const id of ids) drop(id); p.destroy(); }, 200);
   chat = [];
-  $('lobbyTitle').textContent = 'You left the meeting';
-  showLobby('Join again whenever you like. The link still works.');
+  showLobby('You left the meeting. Join again whenever you like, the link still works.');
 }
 $('leave').onclick = leave;
 window.addEventListener('pagehide', () => { if (inCall) { broadcast({ t: 'bye' }); peer && peer.destroy(); } });
