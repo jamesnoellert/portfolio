@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paint Park</title>
+<meta name="robots" content="noindex">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fd3ff; font-family: "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif; user-select: none; }
+  canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.25); }
+  #title { position: absolute; top: 14px; left: 18px; font-size: 26px; font-weight: 800; letter-spacing: .5px; }
+  #hint { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: 800;
+          background: rgba(255,255,255,.92); color: #ff7a00; padding: 10px 22px; border-radius: 999px; text-shadow: none;
+          box-shadow: 0 4px 0 rgba(0,0,0,.12); opacity: 0; transition: opacity .2s; white-space: nowrap; }
+  #hint.on { opacity: 1; }
+  #palette { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center;
+             background: rgba(255,255,255,.9); padding: 10px 16px; border-radius: 22px; box-shadow: 0 4px 0 rgba(0,0,0,.12);
+             transition: opacity .2s, transform .2s; }
+  #palette.off { opacity: 0; transform: translateX(-50%) translateY(30px); }
+  .sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,.12); position: relative; transition: transform .12s; }
+  .sw.sel { transform: scale(1.3); box-shadow: 0 0 0 3px #333; }
+  .sw b { position: absolute; top: -20px; left: 0; right: 0; text-align: center; font-size: 12px; color: #666; text-shadow: none; }
+  .sep { width: 2px; height: 34px; background: #ddd; margin: 0 4px; }
+  .sz { border-radius: 50%; background: #555; }
+  .sz.sel { background: #ff7a00; }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(80,170,255,.55); }
+  #overlay.hide { display: none; }
+  .card { background: #fff; border-radius: 28px; padding: 28px 36px; text-align: center; max-width: 560px; margin: 16px; box-shadow: 0 8px 0 rgba(0,0,0,.15); }
+  .card h1 { margin: 0 0 6px; font-size: 46px; color: #ff7a00; }
+  .card h1 span:nth-child(1){color:#ff4d6d}.card h1 span:nth-child(2){color:#ffb000}.card h1 span:nth-child(3){color:#2bc46b}.card h1 span:nth-child(4){color:#2f8cff}.card h1 span:nth-child(5){color:#a259ff}
+  .card p { color: #556; font-size: 17px; margin: 6px 0 16px; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; text-align: left; color: #334; font-size: 16px; margin: 0 auto 20px; width: fit-content; }
+  kbd { background: #f1f3f7; border: 2px solid #d6dae3; border-bottom-width: 4px; border-radius: 8px; padding: 1px 8px; font-family: inherit; font-weight: 700; font-size: 14px; }
+  button { font: inherit; font-size: 22px; font-weight: 800; border: 0; border-radius: 999px; padding: 12px 34px; cursor: pointer; color: #fff; background: #ff7a00; box-shadow: 0 5px 0 #c55e00; margin: 4px; }
+  button:active { transform: translateY(3px); box-shadow: 0 2px 0 #c55e00; }
+  button.alt { background: #2f8cff; box-shadow: 0 5px 0 #1f63b8; font-size: 17px; padding: 10px 22px; }
+  #loading { color: #fff; font-size: 28px; font-weight: 800; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="title">🎨 Paint Park</div>
+  <div id="hint"></div>
+  <div id="palette" class="off"></div>
+</div>
+<div id="overlay"><div class="card" id="card"><div id="loading">Loading…</div></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="cat.js"></script>
+<script>
+(() => {
+const V3 = THREE.Vector3, TAU = Math.PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const damp = (k, dt) => 1 - Math.exp(-k * dt);
+let rnd = 7; const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647); // seeded so the park is the same every time
+
+// ---------------------------------------------------------------- renderer, scene, light
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fd3ff);
+scene.fog = new THREE.Fog(0x8fd3ff, 70, 160);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+
+scene.add(new THREE.HemisphereLight(0xdff3ff, 0x7fae5a, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 });
+sun.shadow.bias = -0.0006;
+scene.add(sun, sun.target);
+
+const grad = new THREE.DataTexture(new Uint8Array([120,120,120,255, 200,200,200,255, 255,255,255,255]), 3, 1, THREE.RGBAFormat);
+grad.minFilter = grad.magFilter = THREE.NearestFilter;
+const toon = (color, extra) => new THREE.MeshToonMaterial(Object.assign({ color, gradientMap: grad }, extra));
+function mesh(geo, mat, x = 0, y = 0, z = 0, parent = scene) {
+  const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; parent.add(m); return m;
+}
+
+// ---------------------------------------------------------------- the park
+const PARK_R = 40;            // the fence; you can't leave
+const colliders = [];         // {x, z, r}: trees, rocks
+const platforms = [];         // raised ground: ramps and bouncy mushrooms
+
+// Island, beach and sea
+const grassC = document.createElement('canvas'); grassC.width = grassC.height = 512;
+{ const g = grassC.getContext('2d'); g.fillStyle = '#7fd35a'; g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 16; i++) { g.fillStyle = i % 2 ? 'rgba(255,255,255,.05)' : 'rgba(0,60,0,.04)'; g.fillRect(i * 32, 0, 32, 512); }
+  for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(${rand() < .5 ? '40,120,20' : '200,255,150'},${.08 + rand() * .1})`; g.fillRect(rand() * 512, rand() * 512, 2, 2 + rand() * 4); } }
+const grassTex = new THREE.CanvasTexture(grassC); grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(10, 10);
+const ground = mesh(new THREE.CircleGeometry(48, 72).rotateX(-Math.PI / 2), toon(0xffffff, { map: grassTex }));
+ground.castShadow = false;
+mesh(new THREE.CylinderGeometry(48, 52, 1.2, 72), toon(0xf3dc9a), 0, -0.61, 0).castShadow = false;
+const sea = mesh(new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2), toon(0x3fb7f0), 0, -0.9, 0); sea.castShadow = false;
+
+// Fence
+{ const wood = toon(0xffffff), post = new THREE.BoxGeometry(0.22, 1.0, 0.22);
+  const N = 100;
+  for (let i = 0; i < N; i++) {
+    const a = i / N * TAU, x = Math.cos(a) * (PARK_R + 0.6), z = Math.sin(a) * (PARK_R + 0.6);
+    mesh(post, wood, x, 0.5, z).rotation.y = -a;
+    const a2 = (i + 0.5) / N * TAU, seg = TAU * (PARK_R + 0.6) / N + 0.05;
+    for (const [y, c] of [[0.35, 0xff8fb1], [0.75, 0x9fd8ff]]) {
+      const r = mesh(new THREE.BoxGeometry(0.08, 0.12, seg), toon(c), Math.cos(a2) * (PARK_R + 0.6), y, Math.sin(a2) * (PARK_R + 0.6));
+      r.rotation.y = -a2;
+    }
+  } }
+
+// Trees, rocks, flowers, clouds — scattered around the edge, the middle is left open for painting
+function tree(x, z, s) {
+  mesh(new THREE.CylinderGeometry(0.22 * s, 0.32 * s, 2 * s, 8), toon(0x9b6a3c), x, s, z);
+  const leaf = toon([0x4cc35a, 0x3fb04f, 0x6ad66a][Math.floor(rand() * 3)]);
+  mesh(new THREE.IcosahedronGeometry(1.3 * s, 1), leaf, x, 2.5 * s, z);
+  mesh(new THREE.IcosahedronGeometry(0.95 * s, 1), leaf, x + 0.6 * s, 3.2 * s, z + 0.2 * s);
+  mesh(new THREE.IcosahedronGeometry(0.8 * s, 1), leaf, x - 0.5 * s, 3.4 * s, z - 0.3 * s);
+  if (rand() < 0.5) for (let i = 0; i < 4; i++) mesh(new THREE.SphereGeometry(0.13 * s, 8, 6), toon(0xff4d4d), x + (rand() - .5) * 2 * s, 2.3 * s + rand() * 1.2 * s, z + (rand() - .5) * 2 * s);
+  colliders.push({ x, z, r: 0.45 * s, leaf: 1.7 * s, top: 4.2 * s });
+}
+function rock(x, z, s) {
+  const r = mesh(new THREE.DodecahedronGeometry(s, 0), toon(0xc9c3d6), x, s * 0.5, z);
+  r.rotation.set(rand(), rand() * 3, rand()); r.scale.y = 0.7;
+  colliders.push({ x, z, r: s * 0.95 });
+}
+for (let i = 0; i < 26; i++) { const a = rand() * TAU, d = 24 + rand() * 13; tree(Math.cos(a) * d, Math.sin(a) * d, 0.8 + rand() * 0.6); }
+for (let i = 0; i < 7; i++) { const a = rand() * TAU, d = 20 + rand() * 16; rock(Math.cos(a) * d, Math.sin(a) * d, 0.5 + rand() * 0.6); }
+{ const stem = new THREE.CylinderGeometry(0.02, 0.02, 0.3, 4), head = new THREE.SphereGeometry(0.09, 8, 6), cols = [0xff5c8a, 0xffe14d, 0xffffff, 0xb07bff, 0xff9f43].map(c => toon(c)), green = toon(0x2f9e44);
+  for (let i = 0; i < 140; i++) {
+    const a = rand() * TAU, d = 16 + rand() * 23, x = Math.cos(a) * d, z = Math.sin(a) * d;
+    mesh(stem, green, x, 0.15, z).castShadow = false; mesh(head, cols[i % 5], x, 0.32, z).castShadow = false;
+  } }
+const clouds = [];
+for (let i = 0; i < 12; i++) {
+  const g = new THREE.Group(), m = toon(0xffffff, { emissive: 0x666666 });
+  for (let j = 0; j < 4; j++) { const p = mesh(new THREE.SphereGeometry(2 + rand() * 1.5, 12, 10), m, j * 2.4 - 3.6, rand() * 1.2, rand() * 1.5, g); p.castShadow = false; }
+  const a = rand() * TAU, d = 30 + rand() * 60; g.position.set(Math.cos(a) * d, 22 + rand() * 10, Math.sin(a) * d);
+  scene.add(g); clouds.push(g);
+}
+
+// Ramps (bike jumps): a wedge rising along its local +Z. Walking into the tall end is a wall.
+function ramp(x, z, yaw, len, wid, h, color) {
+  const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(len, 0); s.lineTo(len, h); s.lineTo(0, 0);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: wid, bevelEnabled: false });
+  geo.translate(0, 0, -wid / 2); geo.rotateY(-Math.PI / 2); // shape x -> +Z
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = yaw; scene.add(g);
+  mesh(geo, toon(color), 0, 0, 0, g);
+  for (let i = 0; i < 4; i++) mesh(new THREE.BoxGeometry(wid * 0.98, 0.03, 0.25), toon(0xffffff), 0, h * (i + 0.5) / 4 + 0.02, len * (i + 0.5) / 4, g).rotation.x = -Math.atan2(h, len);
+  platforms.push({ kind: 'ramp', x, z, yaw, len, wid, h });
+}
+ramp(16, 8, -0.9, 6, 3.2, 1.3, 0xffb000);
+ramp(-15, 12, 2.2, 5, 3, 1.0, 0x2f8cff);
+ramp(4, -19, Math.PI, 7, 3.6, 1.6, 0xff4d6d);
+
+// Bouncy mushrooms
+const mushrooms = [];
+function mushroom(x, z) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+  mesh(new THREE.CylinderGeometry(0.45, 0.6, 0.9, 12), toon(0xfff1d6), 0, 0.45, 0, g);
+  const cap = new THREE.Group(); cap.position.y = 0.9; g.add(cap);
+  mesh(new THREE.SphereGeometry(1.3, 20, 12, 0, TAU, 0, Math.PI / 2).scale(1, 0.55, 1), toon(0xff4d6d), 0, 0, 0, cap);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + 0.3, b = 0.7; const d = mesh(new THREE.SphereGeometry(0.2, 10, 8).scale(1, 0.4, 1), toon(0xffffff), Math.cos(a) * 0.85, 0.5, Math.sin(a) * 0.85, cap); d.rotation.set(Math.sin(a) * b, 0, -Math.cos(a) * b); }
+  mesh(new THREE.SphereGeometry(0.22, 10, 8).scale(1, 0.4, 1), toon(0xffffff), 0, 0.7, 0, cap);
+  const m = { x, z, cap, squish: 0 }; mushrooms.push(m);
+  platforms.push({ kind: 'mush', x, z, r: 1.25, h: 1.6, m });
+}
+mushroom(-11, -9); mushroom(12, -12); mushroom(-4, 17);
+
+function groundAt(x, z) { // height and what's there
+  let h = 0, what = null;
+  for (const p of platforms) {
+    if (p.kind === 'ramp') {
+      const dx = x - p.x, dz = z - p.z, c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+      const u = dx * s + dz * c, v = dx * c - dz * s; // along, across
+      if (u > 0 && u < p.len && Math.abs(v) < p.wid / 2) { const y = p.h * u / p.len; if (y > h) { h = y; what = p; } }
+    } else if ((x - p.x) ** 2 + (z - p.z) ** 2 < p.r * p.r) { if (p.h > h) { h = p.h; what = p; } }
+  }
+  return { h, what };
+}
+function pushOut(pos, rad) { // keep a circle out of trees and rocks and inside the fence; returns true if it bumped
+  let hit = false;
+  for (const c of colliders) {
+    const dx = pos.x - c.x, dz = pos.z - c.z, d = Math.hypot(dx, dz), m = c.r + rad;
+    if (d < m && d > 1e-4) { pos.x = c.x + dx / d * m; pos.z = c.z + dz / d * m; hit = true; }
+  }
+  const d = Math.hypot(pos.x, pos.z);
+  if (d > PARK_R - rad) { pos.x *= (PARK_R - rad) / d; pos.z *= (PARK_R - rad) / d; hit = true; }
+  return hit;
+}
+
+// ---------------------------------------------------------------- sounds (all made up on the spot, nothing to download)
+let ac = null, swishGain = null;
+function audio() {
+  if (ac) return; ac = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const n = ac.createBufferSource(); n.buffer = buf; n.loop = true;
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 0.7;
+  swishGain = ac.createGain(); swishGain.gain.value = 0;
+  n.connect(f).connect(swishGain).connect(ac.destination); n.start();
+}
+function tone(freq, t0, dur, type = 'sine', vol = 0.18, slide = 0) {
+  if (!ac) return; const t = ac.currentTime + t0, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t); if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+const sfx = {
+  pickup: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.07, 0.25, 'triangle', 0.15)),
+  drop: () => [784, 523].forEach((f, i) => tone(f, i * 0.08, 0.2, 'triangle', 0.12)),
+  mount: () => [392, 587].forEach((f, i) => tone(f, i * 0.08, 0.2, 'square', 0.06)),
+  jump: () => tone(300, 0, 0.22, 'sine', 0.15, 2.2),
+  boing: () => { tone(180, 0, 0.5, 'sine', 0.22, 3.5); tone(360, 0.02, 0.4, 'triangle', 0.06, 2.5); },
+  bell: () => { tone(1568, 0, 0.9, 'sine', 0.13); tone(2093, 0, 0.7, 'sine', 0.07); tone(1568, 0.18, 0.9, 'sine', 0.13); tone(2093, 0.18, 0.7, 'sine', 0.07); },
+  pop: () => tone(900, 0, 0.08, 'sine', 0.12, 1.6),
+  undo: () => tone(500, 0, 0.18, 'triangle', 0.1, 0.5),
+  bump: () => tone(110, 0, 0.18, 'sine', 0.2, 0.6),
+};
+
+// ---------------------------------------------------------------- colors and brush sizes
+const COLORS = [
+  ['Red', 0xff3b4e], ['Orange', 0xff8a1f], ['Yellow', 0xffd60a], ['Green', 0x2bc46b], ['Blue', 0x2f8cff],
+  ['Purple', 0xa259ff], ['Pink', 0xff7ac8], ['White', 0xffffff], ['Rainbow', -1],
+];
+const SIZES = [0.25, 0.5, 0.9];
+let colorI = 0, sizeI = 1;
+const palEl = document.getElementById('palette');
+function drawPalette() {
+  palEl.innerHTML = COLORS.map(([n, c], i) => `<div class="sw${i === colorI ? ' sel' : ''}" style="background:${c < 0 ? 'conic-gradient(red,orange,yellow,lime,cyan,blue,magenta,red)' : '#' + c.toString(16).padStart(6, '0')}"><b>${i + 1}</b></div>`).join('')
+    + '<div class="sep"></div>' + SIZES.map((s, i) => `<div class="sz${i === sizeI ? ' sel' : ''}" style="width:${10 + i * 9}px;height:${10 + i * 9}px"></div>`).join('');
+}
+drawPalette();
+
+// ---------------------------------------------------------------- paint: ribbons laid flat on the grass
+// Each dab is a quad from the previous dab plus a round blob, so lines have soft round joints at any speed.
+// Stored in chunks of geometry that only grow when you paint; undo just rewinds the write position.
+const SEG = 10, VPD = (2 + SEG) * 3, CHUNK = 4000;  // verts per dab, dabs per chunk
+const paintMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: grad, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+const chunks = []; let ci = 0, cn = 0; const strokes = [];
+function chunk(i) {
+  if (!chunks[i]) {
+    const geo = new THREE.BufferGeometry();
+    const pos = new THREE.BufferAttribute(new Float32Array(CHUNK * VPD * 3), 3), col = new THREE.BufferAttribute(new Float32Array(CHUNK * VPD * 3), 3);
+    pos.setUsage(THREE.DynamicDrawUsage); col.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position', pos); geo.setAttribute('color', col); geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(CHUNK * VPD * 3).map((_, k) => k % 3 === 1 ? 1 : 0), 3));
+    geo.setDrawRange(0, 0);
+    const m = new THREE.Mesh(geo, paintMat); m.frustumCulled = false; m.receiveShadow = true; m.renderOrder = 1; scene.add(m);
+    chunks[i] = { geo, pos, col, dirtyFrom: Infinity, n: 0 };
+  }
+  return chunks[i];
+}
+let stroke = null; // {last: V3, dist, startCi, startCn}
+const PY = 0.015, PK = 0.72, _c = new THREE.Color(); // PK: the sun and sky light brighten paint, so it is stored a bit darker to look like the swatch
+function dab(x, z, w) {
+  if (cn >= CHUNK) { ci++; cn = 0; }
+  const ch = chunk(ci), P = ch.pos.array, C = ch.col.array; let o = cn * VPD * 3;
+  const c = COLORS[colorI][1];
+  if (c < 0) _c.setHSL((stroke.dist * 0.06) % 1, 0.9, 0.58); else _c.setHex(c);
+  const put = (px, pz) => { P[o] = px; P[o + 1] = PY; P[o + 2] = pz; C[o] = _c.r * PK; C[o + 1] = _c.g * PK; C[o + 2] = _c.b * PK; o += 3; };
+  const lx = stroke.last ? stroke.last.x : x, lz = stroke.last ? stroke.last.z : z;
+  let nx = -(z - lz), nz = x - lx; const l = Math.hypot(nx, nz) || 1; nx *= w / 2 / l; nz *= w / 2 / l;
+  put(lx + nx, lz + nz); put(x + nx, z + nz); put(lx - nx, lz - nz);
+  put(lx - nx, lz - nz); put(x + nx, z + nz); put(x - nx, z - nz);
+  for (let i = 0; i < SEG; i++) {
+    const a = i / SEG * TAU, b = (i + 1) / SEG * TAU, r = w / 2;
+    put(x, z); put(x + Math.cos(b) * r, z + Math.sin(b) * r); put(x + Math.cos(a) * r, z + Math.sin(a) * r);
+  }
+  ch.dirtyFrom = Math.min(ch.dirtyFrom, cn); cn++; ch.n = cn;
+  ch.geo.setDrawRange(0, cn * VPD);
+  stroke.last = { x, z };
+}
+function paintTo(x, z) {
+  const w = SIZES[sizeI];
+  if (!stroke) { stroke = { last: null, dist: 0, startCi: ci, startCn: cn }; strokes.push(stroke); dab(x, z, w); return; }
+  const dx = x - stroke.last.x, dz = z - stroke.last.z, d = Math.hypot(dx, dz), step = Math.max(0.05, w * 0.3);
+  if (d < step) return;
+  const n = Math.min(60, Math.floor(d / step)), sx = stroke.last.x, sz = stroke.last.z;
+  for (let i = 1; i <= n; i++) { stroke.dist += d / n; dab(sx + dx * i / n, sz + dz * i / n, w); }
+}
+function flushPaint() {
+  for (const ch of chunks) if (ch && ch.dirtyFrom !== Infinity) {
+    const off = ch.dirtyFrom * VPD * 3, cnt = (ch.n - ch.dirtyFrom) * VPD * 3;
+    if (cnt > 0) for (const a of [ch.pos, ch.col]) { a.updateRange.offset = off; a.updateRange.count = cnt; a.needsUpdate = true; }
+    ch.dirtyFrom = Infinity;
+  }
+}
+function rewindTo(i, n) {
+  ci = i; cn = n;
+  chunks.forEach((ch, k) => { if (!ch) return; ch.n = k < i ? CHUNK : k === i ? n : 0; ch.geo.setDrawRange(0, ch.n * VPD); });
+}
+function undo() { stroke = null; const s = strokes.pop(); if (s) { rewindTo(s.startCi, s.startCn); sfx.undo(); } }
+function cleanAll() { stroke = null; strokes.length = 0; rewindTo(0, 0); }
+
+// Sparkles that pop off the brush while painting
+const sparks = [], sparkGeo = new THREE.OctahedronGeometry(0.06, 0);
+function spark(p, color) {
+  let s = sparks.find(s => s.t <= 0);
+  if (!s) { if (sparks.length > 80) return; s = { m: new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ transparent: true })), v: new V3(), t: 0 }; scene.add(s.m); sparks.push(s); }
+  s.m.material.color.copy(color); s.m.position.copy(p); s.v.set((Math.random() - .5) * 2, 1.5 + Math.random() * 2, (Math.random() - .5) * 2); s.t = 0.6; s.m.visible = true;
+}
+
+// ---------------------------------------------------------------- the paintbrush (a big one, so it reaches the ground from the bike)
+const BRUSH_L = 1.35;
+const brush = new THREE.Group(); scene.add(brush); // its origin is the bristle tip; the handle runs up +Y
+const bristleMat = toon(0xff3b4e);
+{ mesh(new THREE.ConeGeometry(0.11, 0.32, 14).rotateX(Math.PI), bristleMat, 0, 0.16, 0, brush);
+  mesh(new THREE.SphereGeometry(0.11, 14, 8, 0, TAU, 0, Math.PI / 2), bristleMat, 0, 0.32, 0, brush);
+  mesh(new THREE.CylinderGeometry(0.075, 0.1, 0.18, 14), toon(0xd6dbe3), 0, 0.4, 0, brush);
+  mesh(new THREE.CylinderGeometry(0.045, 0.06, BRUSH_L - 0.5, 10), toon(0xffb347), 0, 0.49 + (BRUSH_L - 0.5) / 2, 0, brush);
+  mesh(new THREE.SphereGeometry(0.065, 10, 8), toon(0xff4d6d), 0, BRUSH_L - 0.02, 0, brush); }
+const brushHome = new V3(-3, 0, -2); // where it floats when nobody has it
+const glow = mesh(new THREE.RingGeometry(0.5, 0.75, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xfff27a, transparent: true, opacity: 0.8 }), 0, 0.02, 0);
+glow.castShadow = false;
+let brushHeld = false, paintBlend = 0;
+
+// ---------------------------------------------------------------- the bike (built facing +Z)
+function buildBike() {
+  const g = new THREE.Group(), frame = toon(0x2f8cff), dark = toon(0x2a2d34), chrome = toon(0xdfe5ec), tyre = toon(0x24262b);
+  const R = 0.33, WB = 1.0;
+  function tube(a, b, r, m, parent = g) { // a cylinder between two points
+    const d = new V3().subVectors(b, a), o = mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), m, 0, 0, 0, parent);
+    o.position.copy(a).addScaledVector(d, 0.5); o.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize()); return o;
+  }
+  function wheel(z, parent) {
+    const spin = new THREE.Group(); spin.position.set(0, R, z); parent.add(spin);
+    mesh(new THREE.TorusGeometry(R - 0.03, 0.045, 8, 28).rotateY(Math.PI / 2), tyre, 0, 0, 0, spin);
+    mesh(new THREE.TorusGeometry(R - 0.08, 0.015, 6, 28).rotateY(Math.PI / 2), chrome, 0, 0, 0, spin);
+    for (let i = 0; i < 4; i++) mesh(new THREE.BoxGeometry(0.015, (R - 0.08) * 2, 0.02), chrome, 0, 0, 0, spin).rotation.x = i / 4 * Math.PI;
+    mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.1, 8).rotateZ(Math.PI / 2), chrome, 0, 0, 0, spin);
+    return spin;
+  }
+  const back = wheel(-WB / 2, g);
+  const bb = new V3(0, 0.3, -0.05), seatP = new V3(0, 0.78, -0.3), head = new V3(0, 0.82, 0.36), rear = new V3(0, R, -WB / 2);
+  tube(bb, seatP, 0.035, frame); tube(seatP, head, 0.035, frame); tube(bb, head, 0.04, frame);
+  tube(bb, rear, 0.025, frame); tube(seatP.clone().add(new V3(0, -0.1, 0)), rear, 0.025, frame);
+  mesh(new THREE.BoxGeometry(0.2, 0.06, 0.32), dark, 0, 0.84, -0.32, g); // seat
+  tube(new V3(0, 0.78, -0.3), new V3(0, 0.84, -0.32), 0.02, chrome);
+  // Front: fork, wheel, handlebars and a little basket all turn together
+  const steer = new THREE.Group(); steer.position.copy(head); g.add(steer);
+  const front = wheel(WB / 2 - head.z, steer); front.position.y = R - head.y;
+  tube(new V3(0, 0.1, 0), new V3(0, R - head.y, WB / 2 - head.z), 0.025, chrome, steer);
+  tube(new V3(0, 0, 0), new V3(0, 0.22, -0.05), 0.025, chrome, steer);
+  tube(new V3(-0.3, 0.22, -0.08), new V3(0.3, 0.22, -0.08), 0.022, chrome, steer);
+  for (const s of [-1, 1]) mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.12, 8).rotateZ(Math.PI / 2), toon(0xff4d6d), s * 0.3, 0.22, -0.08, steer);
+  const basket = mesh(new THREE.BoxGeometry(0.34, 0.2, 0.26), toon(0xf5d08a), 0, 0.02, 0.2, steer);
+  mesh(new THREE.SphereGeometry(0.06, 8, 6), toon(0xff7ac8), -0.06, 0.15, 0.2, steer); mesh(new THREE.SphereGeometry(0.06, 8, 6), toon(0xffd60a), 0.07, 0.14, 0.22, steer);
+  mesh(new THREE.SphereGeometry(0.04, 8, 6), toon(0xffd60a), 0.22, 0.24, -0.08, steer); // bell
+  // Pedals
+  const crank = new THREE.Group(); crank.position.copy(bb); g.add(crank);
+  mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 16).rotateZ(Math.PI / 2), chrome, 0.06, 0, 0, crank);
+  for (const s of [-1, 1]) { const arm = mesh(new THREE.BoxGeometry(0.03, 0.17, 0.04), chrome, s * 0.1, s * 0.085, 0, crank);
+    mesh(new THREE.BoxGeometry(0.12, 0.03, 0.08), dark, s * 0.06, s * 0.085, 0, arm); }
+  // Kickstand
+  const kick = tube(new V3(-0.05, 0.3, -0.15), new V3(-0.22, 0.0, -0.2), 0.015, chrome);
+  const tilt = new THREE.Group(); tilt.add(g); // tilt = lean/pitch, g = the bike in it
+  return { root: tilt, back, front, steer, crank, kick, R, WB, seat: new V3(0, 0.84, -0.32) };
+}
+const bike = Object.assign(buildBike(), { pos: new V3(3, 0, -1.5), yaw: -0.4, speed: 0, steerA: 0, lean: 0.12, pitch: 0, vy: 0, air: false, spin: 0, crankA: 0 });
+scene.add(bike.root);
+
+// ---------------------------------------------------------------- the cat
+const hero = { root: new THREE.Group(), body: new THREE.Group(), pos: new V3(0, 0, -5), vel: new V3(), yaw: 0, vy: 0, air: false, walk: 0, squash: 0, onBike: false };
+hero.root.add(hero.body); scene.add(hero.root);
+const CHAR_H = 1.2;     // how tall the cat stands in the park
+const CHAR_YAW = 0;     // turns the model so its face points along +Z
+function loadChar() {
+  const bin = Uint8Array.from(atob(window.CHAR_B64), c => c.charCodeAt(0)).buffer;
+  new THREE.GLTFLoader().parse(bin, '', gltf => {
+    const m = gltf.scene;
+    m.traverse(o => { if (o.isMesh) {
+      const map = o.material.map; if (map) map.encoding = THREE.LinearEncoding;
+      o.material = new THREE.MeshToonMaterial({ map, gradientMap: grad, side: THREE.DoubleSide });
+      o.castShadow = true; o.receiveShadow = true; } });
+    const box = new THREE.Box3().setFromObject(m), size = box.getSize(new V3()), s = CHAR_H / size.y;
+    m.scale.setScalar(s);
+    const c = box.getCenter(new V3());
+    m.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+    const wrap = new THREE.Group(); wrap.rotation.y = CHAR_YAW; wrap.add(m); hero.body.add(wrap);
+    ready();
+  }, e => { console.error(e); ready(); });
+}
+
+// ---------------------------------------------------------------- input
+const keys = {}; let mouseDown = false, locked = false, playing = false, camYaw = 0, camPitch = 0.32, lookIdle = 9, rightDrag = false;
+addEventListener('keydown', e => {
+  if (!playing) return;
+  const k = e.code; if (keys[k]) return; keys[k] = true;
+  if (k === 'KeyE') interact();
+  if (k.startsWith('Digit')) { const n = +k.slice(5) - 1; if (n >= 0 && n < COLORS.length) { colorI = n; onColor(); } }
+  if (k === 'KeyQ') { sizeI = (sizeI + 1) % SIZES.length; drawPalette(); sfx.pop(); }
+  if (k === 'KeyZ') undo();
+  if (k === 'KeyB' && hero.onBike) sfx.bell();
+  if (k === 'Space') e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
+addEventListener('wheel', e => { if (!playing) return; colorI = (colorI + (e.deltaY > 0 ? 1 : COLORS.length - 1)) % COLORS.length; onColor(); }, { passive: true });
+renderer.domElement.addEventListener('mousedown', e => {
+  if (!playing) return;
+  audio();
+  if (e.button === 0) mouseDown = true;
+  if (e.button === 2) rightDrag = true;
+  if (!locked) lockMouse();
+});
+addEventListener('mouseup', e => { if (e.button === 0) { mouseDown = false; } if (e.button === 2) rightDrag = false; });
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('mousemove', e => {
+  if (!playing || !(locked || rightDrag)) return;
+  camYaw -= e.movementX * 0.0032; camPitch = clamp(camPitch + e.movementY * 0.0028, -0.25, 1.25); lookIdle = 0;
+});
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === renderer.domElement;
+  if (!locked && playing && hadLock) pause(); hadLock = locked || hadLock;
+});
+let hadLock = false;
+function lockMouse() { try { const r = renderer.domElement.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+function onColor() { drawPalette(); const c = COLORS[colorI][1]; bristleMat.color.setHex(c < 0 ? 0xff3b4e : c); sfx.pop(); }
+
+// ---------------------------------------------------------------- menus
+const overlay = document.getElementById('overlay'), card = document.getElementById('card');
+const KEYS = `<div class="keys">
+  <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>walk around (or pedal and steer the bike)</span>
+  <span><kbd>Mouse</kbd></span><span>look around</span>
+  <span><kbd>E</kbd></span><span>grab the paintbrush · hop on or off the bike</span>
+  <span><kbd>Hold click</kbd></span><span>paint the ground!</span>
+  <span><kbd>1</kbd>–<kbd>9</kbd> or <kbd>Scroll</kbd></span><span>pick a color (9 is rainbow)</span>
+  <span><kbd>Q</kbd></span><span>small, medium or big brush</span>
+  <span><kbd>Z</kbd></span><span>undo the last line</span>
+  <span><kbd>Space</kbd> · <kbd>Shift</kbd> · <kbd>B</kbd></span><span>jump · run · ring the bell</span>
+</div>`;
+function ready() {
+  card.innerHTML = `<h1><span>P</span><span>a</span><span>i</span><span>n</span><span>t</span> Park</h1><p>Grab the big paintbrush and draw all over the park.<br>Bounce on mushrooms and ride the bike off the ramps!</p>${KEYS}<button id="go">▶ Play</button>`;
+  document.getElementById('go').onclick = start;
+}
+function start() { audio(); overlay.classList.add('hide'); playing = true; lockMouse(); }
+function pause() {
+  playing = false; mouseDown = false; for (const k in keys) keys[k] = false;
+  overlay.classList.remove('hide');
+  card.innerHTML = `<h1>Paused</h1>${KEYS}<button id="go">▶ Keep playing</button><br><button class="alt" id="clean">🧽 Clean the whole park</button>`;
+  document.getElementById('go').onclick = start;
+  document.getElementById('clean').onclick = () => { cleanAll(); sfx.undo(); document.getElementById('clean').textContent = '✨ All clean!'; };
+}
+addEventListener('keydown', e => { if (e.code === 'Escape' && playing && !locked) pause(); });
+
+// ---------------------------------------------------------------- interacting
+const hintEl = document.getElementById('hint');
+function nearBrush() { return !brushHeld && Math.hypot(hero.pos.x - brushHome.x, hero.pos.z - brushHome.z) < 1.8; }
+function nearBike() { return !hero.onBike && Math.hypot(hero.pos.x - bike.pos.x, hero.pos.z - bike.pos.z) < 2.0 && Math.abs(hero.pos.y - bike.pos.y) < 1; }
+function interact() {
+  if (nearBrush()) { brushHeld = true; palEl.classList.remove('off'); sfx.pickup(); }
+  else if (hero.onBike) {
+    hero.onBike = false; sfx.mount();
+    const lx = -Math.cos(bike.yaw), lz = Math.sin(bike.yaw); // bike's right
+    hero.pos.set(bike.pos.x - lx * 0.9, bike.pos.y, bike.pos.z - lz * 0.9); pushOut(hero.pos, 0.35);
+    hero.vel.set(0, 0, 0); hero.vy = 0; hero.yaw = bike.yaw; bike.speed = 0;
+  }
+  else if (nearBike() && !bike.air) { hero.onBike = true; sfx.mount(); }
+  else if (brushHeld) {
+    brushHeld = false; palEl.classList.add('off'); sfx.drop(); stroke = null;
+    const fx = Math.sin(hero.yaw), fz = Math.cos(hero.yaw);
+    brushHome.set(hero.pos.x + fx * 1.1, 0, hero.pos.z + fz * 1.1); pushOut(brushHome, 0.3);
+  }
+}
+
+// ---------------------------------------------------------------- moving about
+const GRAV = 20;
+function updateHero(dt) {
+  const fwdX = Math.sin(camYaw), fwdZ = Math.cos(camYaw); // the way the camera looks
+  let ix = 0, iz = 0;
+  if (keys.KeyW || keys.ArrowUp) { ix += fwdX; iz += fwdZ; }
+  if (keys.KeyS || keys.ArrowDown) { ix -= fwdX; iz -= fwdZ; }
+  if (keys.KeyA) { ix += fwdZ; iz -= fwdX; }
+  if (keys.KeyD) { ix -= fwdZ; iz += fwdX; }
+  const il = Math.hypot(ix, iz), speed = keys.ShiftLeft || keys.ShiftRight ? 7 : 4.2;
+  if (il > 0) { ix /= il; iz /= il; }
+  const k = damp(hero.air ? 3 : 12, dt);
+  hero.vel.x += (ix * speed - hero.vel.x) * k; hero.vel.z += (iz * speed - hero.vel.z) * k;
+  if (il > 0) { let d = Math.atan2(ix, iz) - hero.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); hero.yaw += d * damp(12, dt); }
+  if (keys.Space && !hero.air) { hero.vy = 7.5; hero.air = true; sfx.jump(); hero.squash = -0.25; }
+
+  const old = hero.pos.clone();
+  hero.pos.x += hero.vel.x * dt; hero.pos.z += hero.vel.z * dt;
+  // Too tall a step (back of a ramp, side of a mushroom) is a wall unless you jump onto it
+  if (groundAt(hero.pos.x, hero.pos.z).h > hero.pos.y + 0.45) {
+    if (groundAt(hero.pos.x, old.z).h <= hero.pos.y + 0.45) hero.pos.z = old.z;
+    else if (groundAt(old.x, hero.pos.z).h <= hero.pos.y + 0.45) hero.pos.x = old.x;
+    else { hero.pos.x = old.x; hero.pos.z = old.z; }
+  }
+  pushOut(hero.pos, 0.35);
+  const gnd = groundAt(hero.pos.x, hero.pos.z);
+  if (hero.air) {
+    hero.vy -= GRAV * dt; hero.pos.y += hero.vy * dt;
+    if (hero.pos.y <= gnd.h) {
+      hero.pos.y = gnd.h;
+      if (gnd.what && gnd.what.kind === 'mush') { hero.vy = 13; gnd.what.m.squish = 1; sfx.boing(); hero.squash = -0.35; }
+      else { hero.air = false; hero.squash = Math.min(0.3, -hero.vy * 0.03); hero.vy = 0; }
+    }
+  } else {
+    if (gnd.h < hero.pos.y - 0.3) { hero.air = true; hero.vy = 0; }
+    else if (gnd.what && gnd.what.kind === 'mush') { hero.vy = 13; hero.air = true; gnd.what.m.squish = 1; sfx.boing(); }
+    else hero.pos.y = gnd.h;
+  }
+  // Waddle: a hop, a side-to-side rock and a little squash on landing
+  const moving = Math.hypot(hero.vel.x, hero.vel.z);
+  if (!hero.air && moving > 0.3) hero.walk += moving * dt * 2.4;
+  const amt = hero.air ? 0 : clamp(moving / 4, 0, 1);
+  hero.squash += (0 - hero.squash) * damp(10, dt);
+  hero.body.position.y = Math.abs(Math.sin(hero.walk)) * 0.12 * amt;
+  hero.body.rotation.set(0.12 * amt, 0, Math.sin(hero.walk) * 0.16 * amt);
+  hero.body.scale.set(1 + hero.squash * 0.5, 1 - hero.squash, 1 + hero.squash * 0.5);
+  if (hero.air) hero.body.rotation.x = clamp(-hero.vy * 0.02, -0.25, 0.25);
+  hero.root.position.copy(hero.pos); hero.root.rotation.set(0, hero.yaw, 0);
+}
+
+function updateBike(dt) {
+  const riding = hero.onBike;
+  const thr = riding ? (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) : 0;
+  const st = riding ? (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) : 0;
+  const top = keys.ShiftLeft || keys.ShiftRight ? 15 : 11;
+  if (!bike.air) {
+    if (thr > 0) bike.speed += (bike.speed < top ? 6 : -3) * dt;
+    else if (thr < 0) bike.speed = bike.speed > 0.2 ? bike.speed - 12 * dt : Math.max(-2.5, bike.speed - 3 * dt);
+    else bike.speed -= Math.sign(bike.speed) * Math.min(Math.abs(bike.speed), 1.6 * dt);
+  }
+  bike.steerA += (st * 0.55 / (1 + Math.abs(bike.speed) * 0.09) - bike.steerA) * damp(8, dt);
+  const yawRate = bike.speed * Math.tan(bike.steerA) / bike.WB;
+  if (!bike.air) bike.yaw += yawRate * dt;
+  const fx = Math.sin(bike.yaw), fz = Math.cos(bike.yaw);
+  const old = bike.pos.clone();
+  bike.pos.x += fx * bike.speed * dt; bike.pos.z += fz * bike.speed * dt;
+  if (groundAt(bike.pos.x, bike.pos.z).h > bike.pos.y + 0.35) { bike.pos.x = old.x; bike.pos.z = old.z; if (Math.abs(bike.speed) > 2) sfx.bump(); bike.speed *= -0.3; }
+  if (pushOut(bike.pos, 0.5) && Math.abs(bike.speed) > 2) { sfx.bump(); bike.speed *= 0.4; }
+  // Ground under each wheel gives the pitch; leaving the top of a ramp launches you
+  const gF = groundAt(bike.pos.x + fx * 0.5, bike.pos.z + fz * 0.5).h, gB = groundAt(bike.pos.x - fx * 0.5, bike.pos.z - fz * 0.5).h, gc = (gF + gB) / 2;
+  const slope = Math.atan2(gF - gB, 1.0);
+  if (bike.air) {
+    bike.vy -= GRAV * 0.8 * dt; bike.pos.y += bike.vy * dt;
+    bike.pitch += (-0.15 - bike.pitch) * damp(1.5, dt);
+    if (bike.pos.y <= gc) { bike.pos.y = gc; bike.air = false; if (bike.vy < -4) { sfx.bump(); hero.squash = 0.25; } bike.vy = 0; }
+  } else {
+    if (gc < bike.pos.y - 0.12 && bike.speed > 3) { bike.air = true; bike.vy = Math.max(0, Math.sin(bike.pitch) * bike.speed) + 1.5; sfx.jump(); }
+    else { bike.pos.y = gc; bike.pitch += (slope - bike.pitch) * damp(14, dt); }
+  }
+  // Lean into turns; parked, it rests on the kickstand
+  const want = riding ? (Math.abs(bike.speed) > 1 ? clamp(Math.atan(bike.speed * yawRate / 9.8), -0.5, 0.5) : 0) : 0.14;
+  bike.lean += (want - bike.lean) * damp(6, dt);
+  bike.spin += bike.speed / bike.R * dt; if (riding && thr > 0 && !bike.air) bike.crankA += bike.speed / bike.R * dt * 0.5;
+  else if (riding) bike.crankA += bike.speed / bike.R * dt * 0.15;
+  bike.back.rotation.x = bike.front.rotation.x = bike.spin; bike.crank.rotation.x = bike.crankA;
+  bike.steer.rotation.y = bike.steerA * 1.3; bike.kick.visible = !riding && Math.abs(bike.speed) < 0.3;
+  bike.root.position.copy(bike.pos); bike.root.rotation.set(-bike.pitch, bike.yaw, -bike.lean, 'YXZ');
+  if (riding) {
+    hero.pos.copy(bike.pos); hero.yaw = bike.yaw; hero.air = false; hero.vy = 0;
+    hero.root.position.copy(bike.root.localToWorld(new V3(0, 0.58, -0.28)));
+    hero.root.quaternion.copy(bike.root.quaternion);
+    hero.squash += (0 - hero.squash) * damp(10, dt);
+    hero.body.position.y = Math.abs(Math.sin(bike.crankA)) * 0.03;
+    hero.body.rotation.set(0.2, 0, Math.sin(bike.crankA) * 0.06);
+    hero.body.scale.set(1 + hero.squash * 0.5, 1 - hero.squash, 1 + hero.squash * 0.5);
+  }
+}
+
+// ---------------------------------------------------------------- the brush in hand, and painting
+const _h = new V3(), _t = new V3(), _rest = new V3(), _paint = new V3(), _d = new V3(), _up = new V3(0, 1, 0);
+function updateBrush(dt, time) {
+  const wantPaint = brushHeld && mouseDown && playing;
+  paintBlend += ((wantPaint ? 1 : 0) - paintBlend) * damp(16, dt);
+  if (!brushHeld) {
+    brush.position.set(brushHome.x, 0.35 + Math.sin(time * 2.5) * 0.12, brushHome.z);
+    brush.quaternion.setFromAxisAngle(_up, time * 1.2);
+    glow.visible = true; glow.position.set(brushHome.x, groundAt(brushHome.x, brushHome.z).h + 0.02, brushHome.z);
+    glow.scale.setScalar(1 + Math.sin(time * 4) * 0.08); glow.material.opacity = 0.55 + Math.sin(time * 4) * 0.2;
+    stroke = null; if (swishGain) swishGain.gain.value = 0; return;
+  }
+  glow.visible = false;
+  const y = hero.onBike ? bike.yaw : hero.yaw, fx = Math.sin(y), fz = Math.cos(y), rx = -Math.cos(y), rz = Math.sin(y);
+  const base = hero.root.position, onB = hero.onBike;
+  // Hand at the cat's right side; at rest the brush is held up like a torch, painting it sweeps down to the grass
+  _h.set(base.x + rx * 0.42 + fx * 0.12, base.y + (onB ? 0.6 : 0.55) + hero.body.position.y, base.z + rz * 0.42 + fz * 0.12);
+  _rest.set(_h.x + fx * 0.15 + rx * 0.05, _h.y + 0.75, _h.z + fz * 0.15 + rz * 0.05);
+  const reach = onB ? 0.55 : 0.6, ahead = onB ? 0.15 : 0.5;
+  const px = base.x + rx * reach + fx * ahead, pz = base.z + rz * reach + fz * ahead;
+  const gh = groundAt(px, pz).h;
+  _paint.set(px, gh + 0.01, pz);
+  _t.lerpVectors(_rest, _paint, paintBlend);
+  brush.position.copy(_t);
+  brush.quaternion.setFromUnitVectors(_up, _d.subVectors(_h, _t).normalize());
+  // The paint goes down when the bristles touch flat grass
+  const touching = paintBlend > 0.85 && gh < 0.01 && Math.abs(_t.y - gh) < 0.2;
+  if (touching) {
+    paintTo(px, pz);
+    const moved = stroke && stroke.last ? 1 : 0;
+    if (Math.random() < 0.5) spark(_t, COLORS[colorI][1] < 0 ? _c : _c.setHex(COLORS[colorI][1]));
+    if (COLORS[colorI][1] < 0) bristleMat.color.copy(_c);
+    const sp = hero.onBike ? Math.abs(bike.speed) : Math.hypot(hero.vel.x, hero.vel.z);
+    if (swishGain) swishGain.gain.value += (clamp(sp / 8, 0.15, 1) * 0.07 * moved - swishGain.gain.value) * damp(10, dt);
+  } else { stroke = null; if (swishGain) swishGain.gain.value *= 0.8; }
+}
+
+// ---------------------------------------------------------------- camera: always behind and above, mouse orbits
+const camT = new V3(), camP = new V3(); let camFit = 1;
+function updateCamera(dt) {
+  if (!locked && !rightDrag) { // arrow keys can look around too
+    if (keys.ArrowLeft && !hero.onBike) camYaw += 2 * dt;
+    if (keys.ArrowRight && !hero.onBike) camYaw -= 2 * dt;
+  }
+  lookIdle += dt;
+  if (hero.onBike && lookIdle > 1.2 && Math.abs(bike.speed) > 1) { // swing round behind the bike when you're not looking around
+    let d = (bike.speed < 0 ? bike.yaw + Math.PI : bike.yaw) - camYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+    camYaw += d * damp(2.5, dt);
+  }
+  const dist = hero.onBike ? 6.5 : 5.2;
+  camT.lerp(_d.copy(hero.root.position).add(new V3(0, hero.onBike ? 1.5 : 1.2, 0)), damp(hero.onBike ? 12 : 16, dt));
+  camP.set(camT.x - Math.sin(camYaw) * Math.cos(camPitch) * dist, camT.y + Math.sin(camPitch) * dist, camT.z - Math.cos(camYaw) * Math.cos(camPitch) * dist);
+  // Don't end up inside a tree: come in to just in front of the first one in the way
+  const ox = camP.x - camT.x, oy = camP.y - camT.y, oz = camP.z - camT.z;
+  let tMin = 1;
+  for (const c of colliders) if (c.leaf) {
+    const t = clamp(((c.x - camT.x) * ox + (c.z - camT.z) * oz) / (ox * ox + oz * oz), 0, 1);
+    if (Math.hypot(camT.x + ox * t - c.x, camT.z + oz * t - c.z) < c.leaf && camT.y + oy * t < c.top) tMin = Math.min(tMin, t);
+  }
+  if (tMin < 1) { camFit += (Math.max(0.3, tMin - 0.08) - camFit) * damp(10, dt); } else camFit += (1 - camFit) * damp(3, dt);
+  camP.set(camT.x + ox * camFit, camT.y + oy * camFit, camT.z + oz * camFit);
+  camP.y = Math.max(camP.y, groundAt(camP.x, camP.z).h + 0.4);
+  camera.position.copy(camP); camera.lookAt(camT);
+  sun.position.set(camT.x + 20, 40, camT.z + 12); sun.target.position.copy(camT);
+}
+
+function updateHint() {
+  let t = '';
+  if (nearBrush()) t = 'Press E to grab the paintbrush! 🖌️';
+  else if (nearBike()) t = 'Press E to ride the bike! 🚲';
+  else if (hero.onBike && Math.abs(bike.speed) < 0.5 && !brushHeld) t = 'W to pedal · A/D to steer · E to hop off';
+  else if (brushHeld && strokes.length === 0) t = 'Hold the mouse button to paint!';
+  hintEl.textContent = t; hintEl.classList.toggle('on', !!t);
+}
+
+// ---------------------------------------------------------------- loop
+const clock = new THREE.Clock(); let time = 0;
+camT.copy(hero.pos);
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05); time += dt;
+  step(dt);
+  flushPaint(); // once per render, so it covers every dab since the last upload
+  renderer.render(scene, camera);
+}
+function step(dt) {
+  if (!hero.onBike) updateHero(dt);
+  updateBike(dt);
+  updateBrush(dt, time);
+  updateCamera(dt);
+  updateHint();
+  for (const m of mushrooms) { m.squish = Math.max(0, m.squish - dt * 3); const s = Math.sin(m.squish * 9) * m.squish * 0.3; m.cap.scale.set(1 + s, 1 - s, 1 + s); }
+  for (const s of sparks) if (s.t > 0) { s.t -= dt; s.v.y -= 6 * dt; s.m.position.addScaledVector(s.v, dt); s.m.rotation.y += dt * 8; s.m.material.opacity = clamp(s.t / 0.4, 0, 1); s.m.visible = s.t > 0; }
+  for (const c of clouds) { c.position.x += dt * 0.6; if (c.position.x > 100) c.position.x = -100; }
+}
+// Test hook: lets the game be stepped from the console (pointer lock does not work in the preview pane)
+window.__pp = { step, keys, hero, bike, get state() { return { brushHeld, strokes: strokes.length, ci, cn }; }, setMouse: v => mouseDown = v, interact, setPlaying: v => { playing = v; overlay.classList.toggle('hide', v); }, setCam: (y, p) => { camYaw = y; camPitch = p; } };
+loadChar();
+frame();
+})();
+</script>
+</body>
+</html>
