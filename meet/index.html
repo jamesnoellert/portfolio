@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Meet</title>
+<script>
+// Browsers only allow the camera and mic on https pages, so never stay on http (except local testing)
+if (location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) location.replace('https:' + location.href.slice(5));
+</script>
 <meta name="description" content="A small, private voice and video call for up to 4 people.">
 <style>
 :root{--bg:#f6f5f2;--panel:#fff;--fg:#1d1d1b;--muted:#6b6a66;--line:#e2e0da;--accent:#2f7d5b;--accent-fg:#fff;--tile:#e4e2dc;--danger:#b33a3a;--danger-fg:#fff;--tile-w:136px;--focus-w:168px}
@@ -271,7 +275,9 @@ function startMedia() {
 async function getMedia() {
   $('join').disabled = true; $('allow').disabled = true;
   if (!TEST && !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-    setNote("This browser can't do calls. Try a recent Chrome, Safari, Firefox or Edge.");
+    setNote(window.isSecureContext === false
+      ? 'The camera and mic only work on a secure page. Open this link with https:// at the start.'
+      : "This browser can't do calls. Try a recent Chrome, Safari, Firefox or Edge.");
     allowMode(true); return;
   }
   let camErr = null;
